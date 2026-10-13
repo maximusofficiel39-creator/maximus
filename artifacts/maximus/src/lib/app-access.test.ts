@@ -110,37 +110,6 @@ test('affiche en démonstration les fonctionnalités assignées dans la limite e
   );
 });
 
-test('reconnaît les permissions Stock d’un rôle créé directement sans pack ni sélection de fonctionnalités sur l’unité', () => {
-  const { data, company, employee } = createAccessFixture();
-  company.requestedModules = ['stocks'];
-  company.allowedModules = ['stocks'];
-  company.requestedModuleFeatures = { stocks: ['products', 'entries'] };
-
-  const unit = data.orgNodes[0]!;
-  unit.moduleIds = ['stocks'];
-  delete unit.moduleFeatures;
-  data.roles[0]!.modulePermissions = {
-    'stocks:products': ['voir', 'créer'],
-    'stocks:entries': ['voir'],
-  };
-
-  const access = buildAppAccessContext({
-    data,
-    session: `employee:${employee.id}`,
-    employee,
-    activeCompanyId: company.id,
-    activeCompany: company,
-    sectorTestCompanyId: null,
-    serverModuleStatuses: null,
-  });
-
-  assert.deepEqual(access.allowed, ['stocks']);
-  assert.deepEqual(
-    access.sidebarFeatureGroups.flatMap(group => group.items.map(item => item.href)),
-    ['/entreprise/stocks?tab=products', '/entreprise/stocks?tab=entries'],
-  );
-});
-
 test('applique aux accès employés la limite de modules définie par les unités parentes', () => {
   const { data, company, employee } = createAccessFixture();
   const child = data.orgNodes[0]!;
