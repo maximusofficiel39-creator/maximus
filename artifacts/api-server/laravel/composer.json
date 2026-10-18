@@ -10,7 +10,7 @@
         "laravel/framework": "^12.0",
         "laravel/tinker": "^2.10.1",
         "minishlink/web-push": "^9.0",
-        "phpseclib/phpseclib": "^3.0",
+        "phpseclib/phpseclib": "^4.0",
         "vinsaj9/scrypt": "^1.4"
     },
     "require-dev": {
