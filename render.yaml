@@ -17,7 +17,7 @@ services:
       - key: APP_DEBUG
         value: "false"
       - key: APP_URL
-        value: https://maximus.onrender.com
+        value: https://maximus-erp-7rq1.onrender.com
       - key: MAXIMUS_DEPLOYMENT_MODE
         value: central
       - key: APP_KEY
@@ -33,9 +33,9 @@ services:
       - key: DB_CONNECTION
         value: pgsql
       - key: MAXIMUS_CUSTOM_DOMAIN_TARGET
-        value: maximus.onrender.com
+        value: maximus-erp-7rq1.onrender.com
       - key: MAXIMUS_CENTRAL_PUBLIC_URL
-        value: https://maximus.onrender.com
+        value: https://maximus-erp-7rq1.onrender.com
       - key: MAXIMUS_GITHUB_RELEASE_REPOSITORY
         value: maoddoka-wq/Maximus
       - key: MAXIMUS_GITHUB_READ_TOKEN
