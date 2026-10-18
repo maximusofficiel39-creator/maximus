@@ -118,7 +118,7 @@ jobs:
           cp "$SIGNED_APK" artifacts/maximus-chauffeur/dist/maximus-chauffeur.apk
 
       - name: Publish the GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: MAXIMUS Chauffeur ${{ env.RELEASE_VERSION }}
           draft: false
