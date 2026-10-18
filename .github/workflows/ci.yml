@@ -43,7 +43,7 @@ jobs:
       DB_PASSWORD: postgres
       APP_KEY: "base64:Q0ktb25seS0zMi1ieXRlLWtleS1mb3ItbWF4aW11cyE="
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
         with:
           version: 10.26.1
