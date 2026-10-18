@@ -44,7 +44,7 @@ jobs:
       APP_KEY: "base64:Q0ktb25seS0zMi1ieXRlLWtleS1mb3ItbWF4aW11cyE="
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10.26.1
       - uses: actions/setup-node@v4
