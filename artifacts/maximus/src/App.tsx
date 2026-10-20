@@ -3084,7 +3084,7 @@ function AdminDashboard({ data, onNavigate }: { data: StoreData; onNavigate: (pa
   const catalogModules = getConfiguredModules(data);
   const activatedModuleIds = new Set(activeCompanies.flatMap((company) => company.allowedModules));
   return (
-    <div className="dashboard-page space-y-4 sm:space-y-6">
+    <div className="dashboard-page flex flex-col gap-3 sm:gap-6">
       <DashboardHero
         eyebrow="Centre de contrôle"
         title="Vue d’ensemble des espaces clients"
@@ -3318,7 +3318,7 @@ function RoleAwareCompanyDashboard({
   ].filter(Boolean);
 
   return (
-    <div className="dashboard-page space-y-4 sm:space-y-6">
+    <div className="dashboard-page flex flex-col gap-3 sm:gap-6">
       <DashboardHero
         eyebrow="Pilotage de l’entreprise"
         title="Une vue claire pour décider plus vite."
