@@ -1,5 +1,10 @@
 import type { Company, Employee, Role, StoreData } from './store';
+import type { AuthUser } from './auth-api';
 import { synchronizeSelectedPackRolesForCompany } from './module-role-sync';
+
+export function canRunAutomaticPackRoleRepair(actorRole: AuthUser['role']): boolean {
+  return actorRole === 'maximus_admin' || actorRole === 'company_admin';
+}
 
 export interface PackRoleRepairResult {
   repairedData: StoreData;

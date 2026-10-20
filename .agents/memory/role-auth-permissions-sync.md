@@ -15,8 +15,8 @@ Pour réparer un rôle prérempli encore lié à un pack, recalculer ses droits 
 
 **How to apply:** Réparer uniquement les packs toujours sélectionnés, tester le chemin d’affectation avec un compte actif et couvrir le cas d’échec de provisionnement. Garder les contrôles d’entreprise et d’unité stricts plutôt que de rendre sélectionnable un rôle incompatible.
 
-Les réparations automatiques lancées à l’ouverture d’Organisation & accès restent silencieuses lorsqu’elles réussissent; ne pas répéter de bannière de vérification ni de toast de confirmation. Garder l’alerte d’échec et son action de nouvelle tentative.
+Les réparations automatiques de rôles préremplis à l’ouverture d’Organisation & accès sont réservées à MAXIMUS et aux administrateurs d’entreprise. Les managers et employés ne déclenchent pas cette écriture de réparation en arrière-plan; leurs mutations explicites restent bornées par leurs autorisations serveur.
 
-**Why:** Les messages informatifs sur les packs revenaient à chaque entrée dans une entreprise et l’utilisateur a demandé leur retrait, sans désactiver la réparation.
+**Why:** Un compte manager qui lançait une réparation automatique pouvait provoquer un refus 403 de l’API et des notifications répétées à l’ouverture de la liste des employés.
 
-**How to apply:** Supprimer les retours visuels récurrents de chargement et de succès; conserver la réparation automatique, son blocage temporaire des actions dépendantes et les erreurs actionnables.
+**How to apply:** Garder la réparation automatique pour les administrateurs, avec synchronisation serveur des comptes affectés avant sauvegarde. Ne jamais la lancer depuis une session manager ou employé; ne pas élargir leurs permissions pour contourner le refus.

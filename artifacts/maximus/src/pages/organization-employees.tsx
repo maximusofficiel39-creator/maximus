@@ -15,7 +15,7 @@ import {
 import { authApi } from '@/lib/auth-api';
 import { isRoleAssignableToUnit, rolesForExactUnit } from '@/lib/employee-permissions';
 import { synchronizeSelectedPackRolesForCompany } from '@/lib/module-role-sync';
-import { repairSelectedPackRolesAndAccounts } from '@/lib/pack-role-repair';
+import { canRunAutomaticPackRoleRepair, repairSelectedPackRolesAndAccounts } from '@/lib/pack-role-repair';
 import { ActionButton, Field, Modal } from './organization-shared';
 
 type Mutate = (fn: (data: StoreData) => void, message?: string | null) => void;
@@ -41,11 +41,13 @@ export function EmployeesTab({
   data,
   mutate,
   allowSectorAdmin = true,
+  actorRole = 'company_admin',
 }: {
   company: Company;
   data: StoreData;
   mutate: Mutate;
   allowSectorAdmin?: boolean;
+  actorRole?: 'maximus_admin' | 'company_admin' | 'sector_manager' | 'employee';
 }) {
   const { alert, confirm } = useAppDialog();
   const companyEmployees = data.employees.filter(employee => employee.companyId === company.id);
@@ -94,6 +96,11 @@ export function EmployeesTab({
   });
 
   useEffect(() => {
+    if (!canRunAutomaticPackRoleRepair(actorRole)) {
+      setPackRoleRepairError('');
+      setPackRoleRepairStatus('ready');
+      return;
+    }
     const attemptKey = `${packRoleRepairSignature}:${packRoleRepairAttempt}`;
     if (attemptedPackRoleRepair.current === attemptKey) return;
     attemptedPackRoleRepair.current = attemptKey;
@@ -160,6 +167,7 @@ export function EmployeesTab({
     companyRoles,
     data,
     mutate,
+    actorRole,
     packRoleRepairAttempt,
     packRoleRepairSignature,
   ]);

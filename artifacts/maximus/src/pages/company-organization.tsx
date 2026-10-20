@@ -127,7 +127,13 @@ export function CompanyOrganizationAdmin({
       </div>
       {tab === 'structure' && !sectorManager && <StructureTab company={company} data={scopedData} mutate={mutate} />}
       {tab === 'roles' && <RolesTab company={company} data={scopedData} mutate={mutate} />}
-      {tab === 'employees' && <EmployeesTab company={company} data={scopedData} mutate={mutate} allowSectorAdmin={!sectorManager} />}
+      {tab === 'employees' && <EmployeesTab
+        company={company}
+        data={scopedData}
+        mutate={mutate}
+        allowSectorAdmin={!sectorManager}
+        actorRole={sectorManager ? 'sector_manager' : 'company_admin'}
+      />}
       {tab === 'profile' && !sectorManager && <CompanyProfileSection company={company} data={scopedData} mutate={mutate} />}
       {tab === 'publicSite' && !sectorManager && <OrganizationPublicSite company={company} />}
       {tab === 'subscription' && !sectorManager && !subscriptionHidden && <CompanySubscriptionTab company={company} />}

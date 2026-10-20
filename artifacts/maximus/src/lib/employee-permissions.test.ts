@@ -7,7 +7,14 @@ import {
   synchronizeSelectedPackRolesForCompany,
   synchronizeUnitPackRoles,
 } from './module-role-sync';
-import { repairSelectedPackRolesAndAccounts } from './pack-role-repair';
+import { canRunAutomaticPackRoleRepair, repairSelectedPackRolesAndAccounts } from './pack-role-repair';
+
+test('la réparation automatique des rôles préremplis est réservée aux administrateurs', () => {
+  assert.equal(canRunAutomaticPackRoleRepair('maximus_admin'), true);
+  assert.equal(canRunAutomaticPackRoleRepair('company_admin'), true);
+  assert.equal(canRunAutomaticPackRoleRepair('sector_manager'), false);
+  assert.equal(canRunAutomaticPackRoleRepair('employee'), false);
+});
 
 function createCompany(): Company {
   return {
