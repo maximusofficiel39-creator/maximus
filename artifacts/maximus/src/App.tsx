@@ -9248,8 +9248,8 @@ function CompanyModulesDetail({
             {loginSettings?.customAllowed ? 'Autorisé' : 'Non autorisé'}
           </span>
         </div>
-        <div className="mt-5">
         <AuthorizationGate gate={loginGate} testId="login-authorization-gate">
+        <div className="mt-5">
         <label className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 ${loginSettings?.customAllowed ? 'border-emerald-300 bg-emerald-50/60' : 'bg-[hsl(var(--muted)/.4)]'}`}>
           <input
             type="checkbox"
@@ -9274,7 +9274,6 @@ function CompanyModulesDetail({
             </span>
           </span>
         </label>
-        </AuthorizationGate>
         </div>
         <div className="mt-4 grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <label className="block text-sm font-semibold">
@@ -9282,8 +9281,16 @@ function CompanyModulesDetail({
             <select
               data-testid="select-company-login-mode"
               value={loginSettings?.mode ?? 'MAXIMUS'}
-              disabled={!loginSettings?.customAllowed || loginSaving}
-              onChange={(event) => void saveLoginSettings({ mode: event.target.value as 'MAXIMUS' | 'CUSTOM' })}
+              disabled={!loginSettings?.customAllowed || loginSaving || loginGate.locked}
+              onChange={(event) => {
+                if (loginGate.locked) return;
+                const mode = event.target.value as 'MAXIMUS' | 'CUSTOM';
+                void askAuthorizationSave(
+                  loginGate,
+                  'Modifier le mode de connexion personnalisé de cette entreprise.',
+                  () => saveLoginSettings({ mode }),
+                );
+              }}
               className="mt-2 w-full rounded-lg border bg-[hsl(var(--card))] px-3 py-3 text-sm"
             >
               <option value="MAXIMUS">Connexion MAXIMUS actuelle</option>
@@ -9300,6 +9307,7 @@ function CompanyModulesDetail({
             ) : <p className="mt-2 text-xs text-[hsl(var(--muted-foreground))]">Le lien reste masqué tant que la page personnalisée n’est pas activée.</p>}
           </div>
         </div>
+        </AuthorizationGate>
       </section>
       {loginSettings?.customAllowed && (
         <AuthorizationGate gate={domainGate} testId="custom-domain-authorization-gate" title="Domaine public verrouillé">
