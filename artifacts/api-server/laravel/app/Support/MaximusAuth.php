@@ -15,6 +15,8 @@ final class MaximusAuth
 {
     public const COOKIE = 'maximus_session';
     public const DEDICATED_ACCESS_ATTRIBUTE = 'maximusDedicatedAccess';
+    public const COMPANY_SESSION_DAYS = 30;
+    public const ADMIN_SESSION_HOURS = 8;
 
     public static function actor(AuthUser $user): array
     {
@@ -121,9 +123,47 @@ final class MaximusAuth
             'id' => (string) str()->uuid(),
             'token_hash' => self::hashToken($token),
             'user_id' => $user->id,
-            'expires_at' => Carbon::now()->addHours(8),
+            'expires_at' => self::sessionExpiry($user),
             'created_at' => Carbon::now(),
         ]);
+        return $token;
+    }
+
+    public static function sessionExpiry(AuthUser $user): Carbon
+    {
+        return $user->company_id !== null
+            ? Carbon::now()->addDays(self::COMPANY_SESSION_DAYS)
+            : Carbon::now()->addHours(self::ADMIN_SESSION_HOURS);
+    }
+
+    public static function sessionCookieMinutes(AuthUser $user): int
+    {
+        return $user->company_id !== null
+            ? self::COMPANY_SESSION_DAYS * 24 * 60
+            : self::ADMIN_SESSION_HOURS * 60;
+    }
+
+    public static function refreshCompanySession(Request $request, AuthUser $user): ?string
+    {
+        if ($user->company_id === null) {
+            return null;
+        }
+
+        $token = $request->cookie(self::COOKIE);
+        if (! $token) {
+            return null;
+        }
+
+        $session = AuthSession::query()
+            ->where('token_hash', self::hashToken($token))
+            ->where('user_id', $user->id)
+            ->where('expires_at', '>', Carbon::now())
+            ->first();
+        if (! $session) {
+            return null;
+        }
+
+        $session->update(['expires_at' => self::sessionExpiry($user)]);
         return $token;
     }
 
