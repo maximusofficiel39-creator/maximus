@@ -193,7 +193,12 @@ export function Sidebar({
   const singleModuleItems = nav.filter(
     item => 'module' in item && item.module === null,
   );
-  const employeeAdministrationItems = singleModuleItems.filter(item => item.label !== 'Vue d’ensemble');
+  const companyOverviewItems = singleModuleItems.filter(
+    item => item.href === '/entreprise/dashboard',
+  );
+  const employeeAdministrationItems = singleModuleItems.filter(
+    item => item.href !== '/entreprise/dashboard',
+  );
 
   return (
     <>
@@ -302,6 +307,7 @@ export function Sidebar({
         >
           {verticalModuleMenu || isAdmin ? (
             <>
+              {verticalModuleMenu && companyOverviewItems.map(item => link(item))}
               {employeeAdministrationItems.length > 0 && (
                 <>
                   {!compact && (
