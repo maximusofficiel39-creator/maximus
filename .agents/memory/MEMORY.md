@@ -121,3 +121,4 @@
 - [Métadonnées société dans l’état partagé](staff-appstate-company-metadata.md) — le bootstrap enrichit les sociétés; les comptes staff ne doivent ni écrire ces métadonnées ni être bloqués par leur version.
 - [Snapshots des comptes staff](staff-appstate-snapshots.md) — comparer d’abord les cartes partagées non modifiables à l’état courant; leur forme n’est pas celle des collections de records.
 - [Scans et archives](dependency-audit-archives.md) — les anciens lockfiles peuvent répéter les alertes ; distinguer runtime, outils et copies historiques avant de corriger.
+- [Périmètre du module Stock](stock-module-boundary.md) — gérer les articles stockés et les quantités, sans prix ni ventes; les catégories sont propres à chaque entreprise.

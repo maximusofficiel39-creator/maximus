@@ -13,7 +13,7 @@ use Throwable;
 
 class StockController extends Controller
 {
-    private const MOVEMENT_TYPES = ['ENTRÉE', 'SORTIE', 'VENTE', 'ACHAT', 'TRANSFERT', 'AJUSTEMENT+', 'AJUSTEMENT-', 'PERTE', 'RETOUR CLIENT', 'RETOUR FOURNISSEUR'];
+    private const MOVEMENT_TYPES = ['ENTRÉE', 'SORTIE', 'TRANSFERT', 'AJUSTEMENT+', 'AJUSTEMENT-', 'PERTE'];
 
     public function bootstrap(Request $request): JsonResponse
     {
@@ -41,6 +41,7 @@ class StockController extends Controller
         $payload = [];
         if ($includeCore) {
             $payload['products'] = $where('stock_products')->orderBy('name')->get()->map(fn ($row) => $this->product($row))->values();
+            $payload['categories'] = $where('stock_categories')->where('archived', false)->orderBy('name')->get()->map(fn ($row) => $this->category($row))->values();
             $payload['warehouses'] = $where('stock_warehouses')->orderBy('name')->get()->map(fn ($row) => $this->warehouse($row))->values();
             $payload['locations'] = $where('stock_locations')->orderBy('name')->get()->map(fn ($row) => $this->location($row))->values();
             $payload['suppliers'] = $where('stock_suppliers')->orderBy('name')->get()->map(fn ($row) => $this->supplier($row))->values();
@@ -58,6 +59,65 @@ class StockController extends Controller
         return response()->json($payload);
     }
 
+    public function createCategory(Request $request): JsonResponse
+    {
+        if (! $this->allowed($request, 'create', 'references')) {
+            return $this->forbidden();
+        }
+
+        $input = $this->validated($request, ['name' => ['required', 'string', 'min:1', 'max:120']]);
+        $name = trim($input['name']);
+        if ($name === '') {
+            return response()->json(['error' => 'Le nom de la catégorie est obligatoire.'], 422);
+        }
+        $company = $this->company($request);
+        $existing = DB::table('stock_categories')
+            ->where('company_id', $company)
+            ->whereRaw('LOWER(name) = ?', [mb_strtolower($name)])
+            ->first();
+
+        if ($existing && ! $existing->archived) {
+            return response()->json(['error' => 'Cette catégorie existe déjà.'], 409);
+        }
+        if ($existing) {
+            DB::table('stock_categories')->where('id', $existing->id)->update(['name' => $name, 'archived' => false, 'updated_at' => now()]);
+
+            return response()->json($this->category(DB::table('stock_categories')->where('id', $existing->id)->first()));
+        }
+
+        $row = [
+            'id' => $this->id('category'),
+            'company_id' => $company,
+            'name' => $name,
+            'archived' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ];
+        DB::table('stock_categories')->insert($row);
+
+        return response()->json($this->category((object) $row), 201);
+    }
+
+    public function archiveCategory(Request $request, string $id): JsonResponse
+    {
+        if (! $this->allowed($request, 'delete', 'references')) {
+            return $this->forbidden();
+        }
+
+        $company = $this->company($request);
+        $category = DB::table('stock_categories')->where('id', $id)->where('company_id', $company)->first();
+        if (! $category) {
+            return $this->notFound('Catégorie introuvable');
+        }
+        if (DB::table('stock_products')->where('company_id', $company)->where('category', $category->name)->exists()) {
+            return response()->json(['error' => 'Cette catégorie est utilisée par des articles. Réaffectez-les avant de l’archiver.'], 409);
+        }
+
+        DB::table('stock_categories')->where('id', $id)->update(['archived' => true, 'updated_at' => now()]);
+
+        return response()->json($this->category(DB::table('stock_categories')->where('id', $id)->first()));
+    }
+
     public function createProduct(Request $request): JsonResponse
     {
         if (! $this->allowed($request, 'create', 'products')) {
@@ -65,6 +125,9 @@ class StockController extends Controller
         }
         $input = $this->normalizeProductInput($this->productInput($request));
         $company = $this->company($request);
+        if (! $this->activeCategoryExists($input['category'], $company)) {
+            return response()->json(['error' => 'Sélectionnez une catégorie active de cette entreprise.'], 422);
+        }
         if (! empty($input['supplierId']) && ! $this->activeResourceExists('stock_suppliers', $input['supplierId'], $company)) {
             return $this->notFound('Fournisseur introuvable');
         }
@@ -93,6 +156,9 @@ class StockController extends Controller
         $row = DB::table('stock_products')->where('id', $id)->where('company_id', $this->company($request))->first();
         if (! $row) {
             return $this->notFound('Produit introuvable');
+        }
+        if (array_key_exists('category', $input) && ! $this->activeCategoryExists($input['category'], $this->company($request))) {
+            return response()->json(['error' => 'Sélectionnez une catégorie active de cette entreprise.'], 422);
         }
         $changes = $this->snake($input);
         if (array_key_exists('supplierId', $input) && ! empty($input['supplierId'])
@@ -276,14 +342,13 @@ class StockController extends Controller
             'beneficiary' => ['nullable', 'string'],
             'type' => ['required', 'in:'.implode(',', self::MOVEMENT_TYPES)],
             'quantity' => ['required', 'integer', 'min:1'],
-            'purchasePrice' => ['nullable', 'integer', 'min:0'],
             'reason' => ['nullable', 'string'],
             'movementDate' => ['nullable', 'date'],
             'userName' => ['nullable', 'string'],
             'reference' => ['nullable', 'string'],
             'comment' => ['nullable', 'string'],
         ]);
-        $movementFeature = in_array($input['type'], ['SORTIE', 'VENTE', 'AJUSTEMENT-', 'PERTE', 'RETOUR FOURNISSEUR'], true)
+        $movementFeature = in_array($input['type'], ['SORTIE', 'AJUSTEMENT-', 'PERTE'], true)
             ? 'exits'
             : 'entries';
         if (! $this->allowed($request, 'create', $movementFeature)
@@ -311,7 +376,7 @@ class StockController extends Controller
                     throw new \RuntimeException('LOCATION_NOT_FOUND');
                 }
 
-                $out = in_array($input['type'], ['SORTIE', 'VENTE', 'AJUSTEMENT-', 'PERTE', 'RETOUR FOURNISSEUR'], true);
+                $out = in_array($input['type'], ['SORTIE', 'AJUSTEMENT-', 'PERTE'], true);
                 $transfer = $input['type'] === 'TRANSFERT';
                 if ($transfer && empty($input['destinationWarehouseId'])) {
                     throw new \RuntimeException('DESTINATION_REQUIRED');
@@ -336,7 +401,6 @@ class StockController extends Controller
                     'beneficiary' => $input['beneficiary'] ?? null,
                     'type' => $input['type'],
                     'quantity' => $input['quantity'],
-                    'purchase_price' => $input['purchasePrice'] ?? 0,
                     'reason' => $input['reason'] ?? '',
                     'movement_date' => $input['movementDate'] ?? now(),
                     'user_name' => $input['userName'] ?? $actorName,
@@ -353,7 +417,7 @@ class StockController extends Controller
                     'entity_type' => 'movement',
                     'entity_id' => $row['id'],
                     'user_name' => $actorName,
-                    'detail' => $input['type'].' de '.$input['quantity'].' unité(s)',
+                    'detail' => $input['type'].' de '.$input['quantity'].' article(s)',
                     'created_at' => now(),
                 ]);
 
@@ -534,19 +598,25 @@ class StockController extends Controller
         $required = $partial ? ['sometimes'] : ['required'];
 
         return $this->validated($request, [
-            'name' => array_merge($required, ['string', 'min:1']), 'category' => ['nullable', 'string'], 'subcategory' => ['nullable', 'string'], 'brand' => ['nullable', 'string'], 'sku' => array_merge($required, ['string', 'min:1']), 'barcode' => ['nullable', 'string'], 'imageUrl' => ['nullable', 'string'], 'unit' => ['nullable', 'string'], 'purchasePrice' => ['nullable', 'integer', 'min:0'], 'salePrice' => ['nullable', 'integer', 'min:0'], 'minStock' => ['nullable', 'integer', 'min:0'], 'maxStock' => ['nullable', 'integer', 'min:0'], 'supplierId' => ['nullable', 'string'], 'description' => ['nullable', 'string'],
+            'name' => array_merge($required, ['string', 'min:1']),
+            'category' => array_merge($required, ['string', 'min:1', 'max:120']),
+            'brand' => ['nullable', 'string'],
+            'sku' => array_merge($required, ['string', 'min:1']),
+            'barcode' => ['nullable', 'string'],
+            'imageUrl' => ['nullable', 'string'],
+            'minStock' => ['nullable', 'integer', 'min:0'],
+            'maxStock' => ['nullable', 'integer', 'min:0'],
+            'supplierId' => ['nullable', 'string'],
+            'description' => ['nullable', 'string'],
         ]);
     }
 
     private function normalizeProductInput(array $input): array
     {
         $defaults = [
-            'category' => 'Divers',
-            'subcategory' => '',
             'brand' => '',
             'barcode' => '',
             'imageUrl' => '',
-            'unit' => 'unité',
             'description' => '',
         ];
         foreach ($defaults as $key => $default) {
@@ -671,9 +741,18 @@ class StockController extends Controller
             ->exists();
     }
 
+    private function activeCategoryExists(string $name, string $company): bool
+    {
+        return DB::table('stock_categories')
+            ->where('company_id', $company)
+            ->where('name', $name)
+            ->where('archived', false)
+            ->exists();
+    }
+
     private function productDefaults(string $company): array
     {
-        return ['company_id' => $company, 'category' => 'Divers', 'subcategory' => '', 'brand' => '', 'barcode' => '', 'image_url' => '', 'unit' => 'unité', 'purchase_price' => 0, 'sale_price' => 0, 'min_stock' => 0, 'max_stock' => 0, 'supplier_id' => null, 'description' => '', 'archived' => false];
+        return ['company_id' => $company, 'subcategory' => '', 'brand' => '', 'barcode' => '', 'image_url' => '', 'min_stock' => 0, 'max_stock' => 0, 'supplier_id' => null, 'description' => '', 'archived' => false];
     }
 
     private function supplierDefaults(string $company): array
@@ -709,7 +788,12 @@ class StockController extends Controller
 
     private function product(object $r): array
     {
-        return ['id' => $r->id, 'companyId' => $r->company_id, 'name' => $r->name, 'category' => $r->category, 'subcategory' => $r->subcategory, 'brand' => $r->brand, 'sku' => $r->sku, 'barcode' => $r->barcode, 'imageUrl' => $r->image_url, 'unit' => $r->unit, 'purchasePrice' => $r->purchase_price, 'salePrice' => $r->sale_price, 'minStock' => $r->min_stock, 'maxStock' => $r->max_stock, 'supplierId' => $r->supplier_id, 'description' => $r->description, 'archived' => (bool) $r->archived, 'createdAt' => $this->date($r->created_at), 'updatedAt' => $this->date($r->updated_at)];
+        return ['id' => $r->id, 'companyId' => $r->company_id, 'name' => $r->name, 'category' => $r->category, 'brand' => $r->brand, 'sku' => $r->sku, 'barcode' => $r->barcode, 'imageUrl' => $r->image_url, 'minStock' => $r->min_stock, 'maxStock' => $r->max_stock, 'supplierId' => $r->supplier_id, 'description' => $r->description, 'archived' => (bool) $r->archived, 'createdAt' => $this->date($r->created_at), 'updatedAt' => $this->date($r->updated_at)];
+    }
+
+    private function category(object $r): array
+    {
+        return ['id' => $r->id, 'companyId' => $r->company_id, 'name' => $r->name, 'archived' => (bool) $r->archived];
     }
 
     private function supplier(object $r): array
@@ -734,7 +818,9 @@ class StockController extends Controller
 
     private function movement(object $r): array
     {
-        return ['id' => $r->id, 'companyId' => $r->company_id, 'productId' => $r->product_id, 'supplierId' => $r->supplier_id, 'warehouseId' => $r->warehouse_id, 'destinationWarehouseId' => $r->destination_warehouse_id, 'locationId' => $r->location_id, 'requesterService' => $r->requester_service, 'beneficiary' => $r->beneficiary, 'type' => $r->type, 'quantity' => $r->quantity, 'purchasePrice' => $r->purchase_price, 'reason' => $r->reason, 'movementDate' => $this->date($r->movement_date), 'userName' => $r->user_name, 'reference' => $r->reference, 'comment' => $r->comment, 'status' => $r->status, 'createdAt' => $this->date($r->created_at)];
+        $legacyTypes = ['VENTE' => 'SORTIE', 'ACHAT' => 'ENTRÉE', 'RETOUR CLIENT' => 'ENTRÉE', 'RETOUR FOURNISSEUR' => 'SORTIE'];
+
+        return ['id' => $r->id, 'companyId' => $r->company_id, 'productId' => $r->product_id, 'supplierId' => $r->supplier_id, 'warehouseId' => $r->warehouse_id, 'destinationWarehouseId' => $r->destination_warehouse_id, 'locationId' => $r->location_id, 'requesterService' => $r->requester_service, 'beneficiary' => $r->beneficiary, 'type' => $legacyTypes[$r->type] ?? $r->type, 'quantity' => $r->quantity, 'reason' => $r->reason, 'movementDate' => $this->date($r->movement_date), 'userName' => $r->user_name, 'reference' => $r->reference, 'comment' => $r->comment, 'status' => $r->status, 'createdAt' => $this->date($r->created_at)];
     }
 
     private function requestRow(object $r): array

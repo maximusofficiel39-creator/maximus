@@ -19,7 +19,7 @@ class StockTest extends TestCase
         $this->asActor()
             ->getJson('/api/stock/bootstrap?scope=core')
             ->assertOk()
-            ->assertJsonStructure(['products', 'warehouses', 'locations', 'suppliers', 'balances'])
+            ->assertJsonStructure(['products', 'categories', 'warehouses', 'locations', 'suppliers', 'balances'])
             ->assertJsonMissingPath('movements')
             ->assertJsonMissingPath('requests')
             ->assertJsonMissingPath('inventories')
@@ -29,13 +29,21 @@ class StockTest extends TestCase
     public function test_stock_catalog_and_movements_preserve_the_json_contract(): void
     {
         $request = $this->asActor();
+        $category = $request->postJson('/api/stock/categories', [
+            'companyId' => 'kora',
+            'name' => 'Épicerie',
+        ])->assertCreated();
         $product = $request->postJson('/api/stock/products', [
             'companyId' => 'kora',
             'name' => 'Riz local',
+            'category' => $category->json('name'),
             'sku' => 'KOR-RIZ-01',
-            'purchasePrice' => 5000,
-            'salePrice' => 6500,
-        ])->assertCreated()->assertJsonPath('sku', 'KOR-RIZ-01');
+        ])->assertCreated()
+            ->assertJsonPath('sku', 'KOR-RIZ-01')
+            ->assertJsonPath('category', 'Épicerie')
+            ->assertJsonMissingPath('unit')
+            ->assertJsonMissingPath('purchasePrice')
+            ->assertJsonMissingPath('salePrice');
 
         $warehouse = $request->postJson('/api/stock/warehouses', [
             'companyId' => 'kora',
@@ -91,8 +99,13 @@ class StockTest extends TestCase
     public function test_stock_product_image_upload_is_saved_and_served_from_the_company_scoped_route(): void
     {
         $request = $this->asActor();
+        $category = $request->postJson('/api/stock/categories', [
+            'companyId' => 'kora',
+            'name' => 'Photos',
+        ])->assertCreated();
         $product = $request->post('/api/stock/products', [
             'name' => 'Article avec photo',
+            'category' => $category->json('name'),
             'sku' => 'PHOTO-001',
             'image' => UploadedFile::fake()->image('article.png', 24, 24),
         ], ['Accept' => 'application/json'])->assertCreated();
@@ -117,6 +130,47 @@ class StockTest extends TestCase
             ->assertJsonPath('brand', 'Photo mise à jour')
             ->assertJsonPath('imageUrl', $imageUrl);
         $this->assertNotEmpty(DB::table('stock_products')->where('id', $productId)->value('image_data'));
+    }
+
+    public function test_stock_categories_are_company_scoped_and_cannot_be_archived_while_in_use(): void
+    {
+        $request = $this->asActor();
+        $category = $request->postJson('/api/stock/categories', [
+            'companyId' => 'kora',
+            'name' => 'Informatique',
+        ])->assertCreated();
+
+        $request->postJson('/api/stock/products', [
+            'companyId' => 'kora',
+            'name' => 'Ordinateur',
+            'category' => 'Informatique',
+            'sku' => 'INFO-001',
+        ])->assertCreated();
+
+        $request->deleteJson('/api/stock/categories/'.$category->json('id'), [
+            'companyId' => 'kora',
+        ])->assertStatus(409);
+
+        $request->postJson('/api/stock/products', [
+            'companyId' => 'kora',
+            'name' => 'Mauvaise catégorie',
+            'category' => 'Autre entreprise',
+            'sku' => 'INFO-002',
+        ])->assertUnprocessable();
+
+        DB::table('stock_categories')->insert([
+            'id' => 'category-other-company',
+            'company_id' => 'another-company',
+            'name' => 'Confidentiel',
+            'archived' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $request->getJson('/api/stock/bootstrap?scope=core&companyId=kora')
+            ->assertOk()
+            ->assertJsonMissing(['name' => 'Confidentiel']);
+        $request->deleteJson('/api/stock/categories/category-other-company?companyId=kora')
+            ->assertNotFound();
     }
 
     public function test_stock_product_rejects_non_image_uploads(): void
