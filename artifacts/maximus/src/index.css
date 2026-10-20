@@ -214,6 +214,15 @@ body { min-width: 320px; }
 .grid-lines { background-image: linear-gradient(hsl(var(--border) / .4) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--border) / .4) 1px, transparent 1px); background-size: 24px 24px; }
 @media (max-width: 767px) {
   .mobile-hide { display: none; }
+  .dashboard-page { gap: .75rem; }
+  .dashboard-page .dashboard-hero > div { gap: .75rem; padding: 1rem; }
+  .dashboard-page .dashboard-hero h2 { margin-top: .35rem; font-size: 1.2rem; line-height: 1.2; }
+  .dashboard-page .dashboard-hero p { line-height: 1.4; }
+  .dashboard-page .dashboard-hero .mt-5 { margin-top: .75rem; }
+  .dashboard-page .card-surface > header { padding: .7rem .85rem; }
+  .dashboard-page .card-surface > div:not([class*="border-b"]) { padding: .85rem; }
+  .dashboard-page .mobile-stat-grid { gap: .5rem; }
+  .dashboard-page .metric-card { padding: .75rem; }
   .page-pad { padding: 1rem; padding-top: 1.25rem; padding-bottom: 2rem; }
   .page-pad > .mb-7 { margin-bottom: 1.25rem; }
   .page-pad h1 { font-size: 1.75rem; line-height: 1.1; }

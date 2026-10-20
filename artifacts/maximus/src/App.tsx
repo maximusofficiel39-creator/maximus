@@ -1457,7 +1457,9 @@ function AppContent() {
         : { ...baseMeta, kicker: currentCompany.name }
       : baseMeta;
   const currentPath = companyRoutePath;
-  const hidePageHeader = routesWithOwnedHeadings.has(currentPath);
+  const hidePageHeader = routesWithOwnedHeadings.has(currentPath)
+    || currentPath === '/maximus/dashboard'
+    || currentPath === '/entreprise/dashboard';
   const companyInitials =
     currentCompany?.name
       .split(/\s+/)
@@ -3082,7 +3084,7 @@ function AdminDashboard({ data, onNavigate }: { data: StoreData; onNavigate: (pa
   const catalogModules = getConfiguredModules(data);
   const activatedModuleIds = new Set(activeCompanies.flatMap((company) => company.allowedModules));
   return (
-    <div className="space-y-6">
+    <div className="dashboard-page space-y-4 sm:space-y-6">
       <DashboardHero
         eyebrow="Centre de contrôle"
         title="Vue d’ensemble des espaces clients"
@@ -3316,7 +3318,7 @@ function RoleAwareCompanyDashboard({
   ].filter(Boolean);
 
   return (
-    <div className="space-y-6">
+    <div className="dashboard-page space-y-4 sm:space-y-6">
       <DashboardHero
         eyebrow="Pilotage de l’entreprise"
         title="Une vue claire pour décider plus vite."
@@ -4190,8 +4192,18 @@ function CompanyDetail({
             <select
               data-testid="select-company-login-mode"
               value={loginSettings?.mode ?? 'MAXIMUS'}
-              disabled={!loginSettings?.customAllowed || loginSaving}
-              onChange={(event) => void saveLoginSettings({ mode: event.target.value as 'MAXIMUS' | 'CUSTOM' })}
+              disabled={!loginSettings?.customAllowed || loginSaving || authGate.locked}
+              onChange={(event) => {
+                if (authGate.locked) return;
+                void authGate.confirmAndRun(
+                  {
+                    title: 'Confirmer la modification des autorisations',
+                    description: 'Modifier le mode de connexion personnalisé de cette entreprise.',
+                    confirmLabel: 'Enregistrer',
+                  },
+                  () => saveLoginSettings({ mode: event.target.value as 'MAXIMUS' | 'CUSTOM' }),
+                );
+              }}
               className="mt-2 w-full rounded-lg border bg-[hsl(var(--card))] px-3 py-3 text-sm"
             >
               <option value="MAXIMUS">Connexion MAXIMUS actuelle</option>
@@ -8340,13 +8352,52 @@ function CompanyModulesDetail({
 }) {
   const { confirm } = useAppDialog();
   const { onSaved: onNavigationSaved } = useContext(NavigationSettingsContext);
-  const authGate = useAuthorizationGate({
+  const publicSiteGate = useAuthorizationGate({
     resetKey: company.id,
     confirm,
     onError: (error) => showAppToast(error instanceof Error ? error.message : 'La modification n’a pas pu être enregistrée.', 'error'),
   });
-  const askAuthorizationSave = (description: string, action: () => Promise<boolean | void> | boolean | void) =>
-    authGate.confirmAndRun(
+  const loginGate = useAuthorizationGate({
+    resetKey: company.id,
+    confirm,
+    onError: (error) => showAppToast(error instanceof Error ? error.message : 'La modification n’a pas pu être enregistrée.', 'error'),
+  });
+  const domainGate = useAuthorizationGate({
+    resetKey: company.id,
+    confirm,
+    onError: (error) => showAppToast(error instanceof Error ? error.message : 'La modification n’a pas pu être enregistrée.', 'error'),
+  });
+  const navigationGate = useAuthorizationGate({
+    resetKey: company.id,
+    confirm,
+    onError: (error) => showAppToast(error instanceof Error ? error.message : 'La modification n’a pas pu être enregistrée.', 'error'),
+  });
+  const workspaceGate = useAuthorizationGate({
+    resetKey: company.id,
+    confirm,
+    onError: (error) => showAppToast(error instanceof Error ? error.message : 'La modification n’a pas pu être enregistrée.', 'error'),
+  });
+  const notificationGate = useAuthorizationGate({
+    resetKey: company.id,
+    confirm,
+    onError: (error) => showAppToast(error instanceof Error ? error.message : 'La modification n’a pas pu être enregistrée.', 'error'),
+  });
+  const paymentGate = useAuthorizationGate({
+    resetKey: company.id,
+    confirm,
+    onError: (error) => showAppToast(error instanceof Error ? error.message : 'La modification n’a pas pu être enregistrée.', 'error'),
+  });
+  const modulesGate = useAuthorizationGate({
+    resetKey: company.id,
+    confirm,
+    onError: (error) => showAppToast(error instanceof Error ? error.message : 'La modification n’a pas pu être enregistrée.', 'error'),
+  });
+  const askAuthorizationSave = (
+    gate: ReturnType<typeof useAuthorizationGate>,
+    description: string,
+    action: () => Promise<boolean | void> | boolean | void,
+  ) =>
+    gate.confirmAndRun(
       { title: 'Confirmer la modification des autorisations', description, confirmLabel: 'Enregistrer' },
       action,
     );
@@ -8638,8 +8689,7 @@ function CompanyModulesDetail({
     setCustomDomains(Array.isArray(domains) ? domains : []);
   };
 
-  const createCustomDomain = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const createCustomDomain = async () => {
     const domain = domainInput.trim();
     if (!domain) return;
     setDomainSaving(true);
@@ -8676,7 +8726,6 @@ function CompanyModulesDetail({
   };
 
   const deleteCustomDomain = async (domain: EcommerceDomain) => {
-    if (!window.confirm(`Retirer le domaine « ${domain.domain} » ?`)) return;
     setDomainSaving(true);
     setDomainOperation('delete');
     setDomainError('');
@@ -8991,7 +9040,7 @@ function CompanyModulesDetail({
             </Badge>
           </div>
           <div className="mt-5">
-          <AuthorizationGate gate={authGate} testId="public-site-authorization-gate">
+          <AuthorizationGate gate={publicSiteGate} testId="public-site-authorization-gate">
           <div className="grid gap-3">
             <label className={`flex items-start gap-3 rounded-xl border p-4 transition ${publicSiteEnabled ? 'border-[hsl(var(--primary)/.35)] bg-[hsl(var(--primary)/.05)]' : 'bg-[hsl(var(--muted)/.4)]'}`}>
               <Checkbox
@@ -9065,7 +9114,7 @@ function CompanyModulesDetail({
                   && publicBannerEnabled === savedPublicBannerEnabled
                 )
               }
-              onClick={() => void askAuthorizationSave('Enregistrer les autorisations du site public de cette entreprise.', async () => {
+              onClick={() => void askAuthorizationSave(publicSiteGate, 'Enregistrer les autorisations du site public de cette entreprise.', async () => {
                 const targetCompanyId = company.id;
                 setPublicSiteSaving(true);
                 setPublicSiteError('');
@@ -9200,17 +9249,18 @@ function CompanyModulesDetail({
           </span>
         </div>
         <div className="mt-5">
-        <AuthorizationGate gate={authGate} testId="login-authorization-gate">
+        <AuthorizationGate gate={loginGate} testId="login-authorization-gate">
         <label className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 ${loginSettings?.customAllowed ? 'border-emerald-300 bg-emerald-50/60' : 'bg-[hsl(var(--muted)/.4)]'}`}>
           <input
             type="checkbox"
             data-testid="checkbox-company-custom-login"
             checked={Boolean(loginSettings?.customAllowed)}
-            disabled={!loginSettings || loginSaving || authGate.locked}
+            disabled={!loginSettings || loginSaving || loginGate.locked}
             onChange={(event) => {
-              if (authGate.locked) return;
+              if (loginGate.locked) return;
               const customAllowed = event.target.checked;
               void askAuthorizationSave(
+                loginGate,
                 customAllowed ? 'Autoriser la page de connexion personnalisée pour cette entreprise.' : 'Retirer la page de connexion personnalisée de cette entreprise.',
                 () => saveLoginSettings({ customAllowed }),
               );
@@ -9252,6 +9302,7 @@ function CompanyModulesDetail({
         </div>
       </section>
       {loginSettings?.customAllowed && (
+        <AuthorizationGate gate={domainGate} testId="custom-domain-authorization-gate" title="Domaine public verrouillé">
         <section className="card-surface rounded-2xl p-6">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <div>
@@ -9265,7 +9316,10 @@ function CompanyModulesDetail({
               {domainLoading ? 'Chargement…' : `${customDomains.length} domaine${customDomains.length > 1 ? 's' : ''}`}
             </span>
           </div>
-          <form onSubmit={createCustomDomain} className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+          <form onSubmit={(event) => {
+            event.preventDefault();
+            void askAuthorizationSave(domainGate, `Ajouter le domaine ${domainInput.trim()} à cette entreprise.`, createCustomDomain);
+          }} className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
             <label className="block min-w-0 flex-1 text-sm font-semibold">
               Nom de domaine
               <input
@@ -9317,7 +9371,7 @@ function CompanyModulesDetail({
                       type="button"
                       data-testid={`button-verify-company-custom-domain-${domain.id}`}
                       disabled={domainSaving}
-                      onClick={() => void verifyCustomDomain(domain)}
+                      onClick={() => void askAuthorizationSave(domainGate, `Vérifier la configuration DNS de ${domain.domain}.`, () => verifyCustomDomain(domain))}
                       className="rounded-lg border px-3 py-2 text-xs font-bold disabled:opacity-50"
                     >
                       {domainSaving && domainOperation === 'verify' ? 'Vérification…' : 'Vérifier'}
@@ -9326,7 +9380,12 @@ function CompanyModulesDetail({
                       type="button"
                       data-testid={`button-delete-company-custom-domain-${domain.id}`}
                       disabled={domainSaving}
-                      onClick={() => void deleteCustomDomain(domain)}
+                      onClick={() => void domainGate.confirmAndRun({
+                        title: 'Retirer ce domaine personnalisé ?',
+                        description: `Le domaine ${domain.domain} ne sera plus relié à cette entreprise.`,
+                        confirmLabel: 'Retirer le domaine',
+                        tone: 'danger',
+                      }, () => deleteCustomDomain(domain))}
                       className="rounded-lg border border-[hsl(var(--destructive)/.35)] px-3 py-2 text-xs font-bold text-[hsl(var(--destructive))] disabled:opacity-50"
                     >
                       {domainSaving && domainOperation === 'delete' ? 'Retrait…' : 'Retirer'}
@@ -9337,17 +9396,20 @@ function CompanyModulesDetail({
             ))}
           </div>
         </section>
+        </AuthorizationGate>
       )}
       </div>
       <div className={activeCompanySettingsTab === 'access' ? 'space-y-5' : 'hidden'}>
-      <MaximusNavigationSettings company={company} gate={authGate} onSaved={onNavigationSaved} />
-      <AuthorizationGate gate={authGate} testId="access-authorization-gate" title="Accès et autorisations verrouillés">
+      <MaximusNavigationSettings company={company} gate={navigationGate} onSaved={onNavigationSaved} />
       <div className="space-y-5">
+      <AuthorizationGate gate={notificationGate} testId="notification-access-authorization-gate" title="Autorisation des notifications verrouillée">
       <CompanyPushNotificationAccess
         companyId={company.id}
         companyName={company.name}
         dedicatedInstallation={Boolean(company.primaryInstallationId)}
       />
+      </AuthorizationGate>
+      <AuthorizationGate gate={workspaceGate} testId="workspace-features-authorization-gate" title="Visibilité de l’espace verrouillée">
       <section className="card-surface rounded-2xl p-6">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
@@ -9399,12 +9461,14 @@ function CompanyModulesDetail({
             primary
             testId="button-save-company-workspace-features"
             disabled={JSON.stringify(hiddenWorkspaceFeatures) === JSON.stringify(savedHiddenWorkspaceFeatures)}
-            onClick={() => void askAuthorizationSave('Enregistrer la visibilité des fonctionnalités de l’espace entreprise.', saveWorkspaceFeatures)}
+            onClick={() => void askAuthorizationSave(workspaceGate, 'Enregistrer la visibilité des fonctionnalités de l’espace entreprise.', saveWorkspaceFeatures)}
           >
             Enregistrer la visibilité
           </ActionButton>
         </div>
       </section>
+      </AuthorizationGate>
+      <AuthorizationGate gate={paymentGate} testId="payment-access-authorization-gate" title="Accès aux paiements verrouillé">
       <section className="card-surface rounded-2xl p-6">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
@@ -9440,7 +9504,7 @@ function CompanyModulesDetail({
             primary
             testId="button-save-company-payment-systems"
             disabled={paymentLoading || paymentEnabled === savedPaymentEnabled}
-            onClick={() => void askAuthorizationSave('Enregistrer l’autorisation des systèmes de paiement.', async () => {
+            onClick={() => void askAuthorizationSave(paymentGate, 'Enregistrer l’autorisation des systèmes de paiement.', async () => {
               setSaving(true);
               try {
                 const access = await setCompanyPaymentAccess(company.id, paymentEnabled, paymentProviders);
@@ -9460,6 +9524,8 @@ function CompanyModulesDetail({
           </ActionButton>
         </div>
       </section>
+      </AuthorizationGate>
+      <AuthorizationGate gate={modulesGate} testId="module-access-authorization-gate" title="Modules et fonctionnalités verrouillés">
       <section className="card-surface rounded-2xl p-6">
         <div className="flex items-center justify-between">
           <div>
@@ -9591,15 +9657,15 @@ function CompanyModulesDetail({
             primary
             testId="button-save-company-modules"
             onClick={() => {
-              if (!saving) void askAuthorizationSave('Enregistrer les modules, packs et droits des fonctionnalités de cette entreprise.', save);
+              if (!saving) void askAuthorizationSave(modulesGate, 'Enregistrer les modules, packs et droits des fonctionnalités de cette entreprise.', save);
             }}
           >
             {saving ? 'Enregistrement…' : 'Enregistrer la configuration'}
           </ActionButton>
         </div>
       </section>
-      </div>
       </AuthorizationGate>
+      </div>
       </div>
       {editing && <CompanyEditModal company={company} data={data} mutate={mutate} onClose={() => setEditing(false)} />}
     </div>

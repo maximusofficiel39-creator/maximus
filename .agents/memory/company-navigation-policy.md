@@ -17,6 +17,12 @@ Les contrôles d’autorisation MAXIMUS sont verrouillés par défaut, avec dév
 
 **How to apply:** Protéger aussi les actions de masse, les clics sur les libellés et le clavier. Annuler une confirmation ne modifie aucune autorisation. Un échec ne doit pas être annoncé comme un enregistrement réussi.
 
+Dans l’administration MAXIMUS, verrouiller chaque zone de réglages sensibles séparément; ne pas mettre un verrou global qui bloque les réglages indépendants de la page.
+
+**Why:** L’utilisateur a signalé qu’un verrou unique rend les réglages difficiles et a demandé qu’il soit placé à côté des réglages concernés.
+
+**How to apply:** Créer un gate distinct pour chaque groupe cohérent (site public, connexion, navigation, visibilité, notifications, paiement, modules) et confirmer les changements avant leur enregistrement.
+
 Pour une installation dédiée, une synchronisation ordinaire ne doit pas écraser un mode choisi localement. Une nouvelle directive centrale peut réappliquer le mode, même si MAXIMUS sélectionne la même valeur qu’avant.
 
 **Why:** La personnalisation serait perdue silencieusement si chaque synchronisation répétait l’ancien choix central.

@@ -43,6 +43,14 @@ export function companyWorkspaceFeatureForPath(path: string): CompanyWorkspaceFe
   return companyWorkspaceFeatureDefinitions.find(feature => feature.path === pathOnly)?.id ?? null;
 }
 
+export function canAccessCompanySetupGuide(
+  companyExists: boolean,
+  isCompanyAdmin: boolean,
+  isSectorManager: boolean,
+): boolean {
+  return companyExists && (isCompanyAdmin || isSectorManager);
+}
+
 export function normalizeCompanyWorkspaceFeatureIds(value: unknown): CompanyWorkspaceFeatureId[] {
   if (!Array.isArray(value)) return [];
   const validIds = new Set(companyWorkspaceFeatureDefinitions.map(feature => feature.id));

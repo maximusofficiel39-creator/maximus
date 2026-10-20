@@ -2,10 +2,18 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  canAccessCompanySetupGuide,
   companyWorkspaceFeatureForPath,
   normalizeCompanyWorkspaceFeatureIds,
   resolveCompanyWorkspaceHiddenFeatures,
 } from './company-workspace-features';
+
+test('le guide est accessible aux admins et aux managers de secteur seulement', () => {
+  assert.equal(canAccessCompanySetupGuide(true, true, false), true);
+  assert.equal(canAccessCompanySetupGuide(true, false, true), true);
+  assert.equal(canAccessCompanySetupGuide(true, false, false), false);
+  assert.equal(canAccessCompanySetupGuide(false, true, true), false);
+});
 
 test('normalise les fonctionnalités visibles de l’espace entreprise', () => {
   assert.deepEqual(

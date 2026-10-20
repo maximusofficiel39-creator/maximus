@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Company, Employee, OrgNode, Role } from './store';
-import { isRoleAssignableToUnit } from './employee-permissions';
+import { isRoleAssignableToUnit, rolesForExactUnit } from './employee-permissions';
 import { emptyStoreData, modules } from './store';
 import {
   synchronizeSelectedPackRolesForCompany,
@@ -64,6 +64,16 @@ function createRole(modulePermissions: Role['modulePermissions']): Role {
     modulePermissions,
   };
 }
+
+test('un formulaire employé ne propose que les rôles de son unité exacte', () => {
+  const roles: Role[] = [
+    { id: 'role-root', name: 'Responsable', description: '', companyId: 'company-1', sectorId: 'unit-root', modulePermissions: {} },
+    { id: 'role-child', name: 'Responsable', description: '', companyId: 'company-1', sectorId: 'unit-child', modulePermissions: {} },
+    { id: 'role-other', name: 'Responsable', description: '', companyId: 'company-1', sectorId: 'unit-other', modulePermissions: {} },
+  ];
+
+  assert.deepEqual(rolesForExactUnit(roles, 'unit-child').map(role => role.id), ['role-child']);
+});
 
 test('accepte un rôle borné par les droits actifs de l’entreprise et de l’unité', () => {
   assert.equal(

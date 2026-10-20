@@ -10,7 +10,7 @@ import type { AdminAssistantScope } from '@/lib/local-assistant';
 import { normalizePayrollFeatureId } from '@/lib/payroll-features';
 import type { MaximusAssistantAction, MaximusAssistantMessage, MaximusAssistantResponse } from '@/lib/maximus-assistant-api';
 import { getAdminControlRoute, getCompanyControlCapabilities } from '@/lib/control-routing';
-import type { CompanyWorkspaceFeatureId } from '@/lib/company-workspace-features';
+import { canAccessCompanySetupGuide, type CompanyWorkspaceFeatureId } from '@/lib/company-workspace-features';
 import { resolveAmicaleAllowedFeatureIds } from '@/lib/amicales-features';
 
 /**
@@ -355,7 +355,7 @@ export function CompanyRouter({
       });
     }
     const company = data.companies.find(item => item.id === companyId);
-    return company && companyAdmin ? (
+    return company && canAccessCompanySetupGuide(true, companyAdmin, sectorManager) ? (
       renderScreen(screens.setupGuide, {
         companyId,
         companyName: company.name,
@@ -365,7 +365,7 @@ export function CompanyRouter({
     ) : (
       renderScreen(screens.empty, {
         title: 'Accès réservé',
-        text: 'Le guide de configuration est accessible à l’administrateur de l’entreprise.',
+        text: 'Le guide de configuration est accessible à l’administrateur de l’entreprise et aux managers de secteur.',
         action: () => onBack('/entreprise/dashboard'),
       })
     );

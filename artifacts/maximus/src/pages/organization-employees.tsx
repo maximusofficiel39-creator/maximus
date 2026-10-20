@@ -13,7 +13,7 @@ import {
   type StoreData,
 } from '@/lib/store';
 import { authApi } from '@/lib/auth-api';
-import { isRoleAssignableToUnit } from '@/lib/employee-permissions';
+import { isRoleAssignableToUnit, rolesForExactUnit } from '@/lib/employee-permissions';
 import { synchronizeSelectedPackRolesForCompany } from '@/lib/module-role-sync';
 import { repairSelectedPackRolesAndAccounts } from '@/lib/pack-role-repair';
 import { ActionButton, Field, Modal } from './organization-shared';
@@ -384,30 +384,19 @@ function EmployeeFormModal({
     password: '',
     passwordConfirm: '',
   });
-  const sectorCompatibleRoles = allRoles.filter(role => {
-    let currentSectorId: string | null | undefined = formData.sectorId;
-    while (currentSectorId) {
-      if (role.sectorId === currentSectorId) return true;
-      currentSectorId = allNodes.find(node => node.id === currentSectorId)?.parentId;
-    }
-    return false;
-  });
+  const sectorCompatibleRoles = rolesForExactUnit(allRoles, formData.sectorId);
   const compatibleRoles = sectorCompatibleRoles.filter(role =>
     isRoleAssignableToUnit(role, company, formData.sectorId, allNodes, moduleDefinitions),
   );
   const selectedRole = allRoles.find(role => role.id === formData.roleId);
   const selectedRoleIsCompatible = compatibleRoles.some(role => role.id === formData.roleId);
-  const selectedRoleNeedsCorrection = Boolean(
-    selectedRole
-    && sectorCompatibleRoles.some(role => role.id === selectedRole.id)
-    && !selectedRoleIsCompatible,
-  );
+  const selectedRoleNeedsCorrection = Boolean(selectedRole && !selectedRoleIsCompatible);
 
   const handleSave = () => {
     const email = formData.email.trim().toLowerCase();
     const role = compatibleRoles.find(item => item.id === formData.roleId);
     if (selectedRoleNeedsCorrection) {
-      setError('Les permissions de ce rôle dépassent les droits de l’entreprise ou de l’unité. Corrigez le rôle dans « Rôles & permissions », puis réessayez.');
+      setError('Le rôle affecté appartient à une autre unité ou dépasse les droits autorisés. Choisissez un rôle de cette unité, ou corrigez ses permissions dans « Rôles & permissions ».');
       return;
     }
     if (!formData.firstName.trim() || !formData.lastName.trim() || !email || !formData.position.trim() || !formData.sectorId || !role) {
@@ -476,7 +465,7 @@ function EmployeeFormModal({
             {selectedRoleNeedsCorrection && <option value={selectedRole?.id} disabled>{selectedRole?.name} — permissions à corriger</option>}
             {compatibleRoles.map(role => <option key={role.id} value={role.id}>{role.name}</option>)}
           </select>
-          <p className="mt-1 text-[10px] text-[hsl(var(--muted-foreground))]">Rôles de l’unité sélectionnée et de ses unités parentes, dans les droits autorisés à l’entreprise.</p>
+          <p className="mt-1 text-[10px] text-[hsl(var(--muted-foreground))]">Seuls les rôles de l’unité sélectionnée et compatibles avec ses droits sont proposés.</p>
           {selectedRoleNeedsCorrection ? (
             <Alert variant="destructive" className="mt-2">
               <AlertDescription>Ce rôle ne peut pas être attribué tel quel. Fermez ce formulaire et corrigez ses permissions dans « Rôles & permissions ».</AlertDescription>

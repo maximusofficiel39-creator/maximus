@@ -20,6 +20,11 @@ import {
 export type ModulePermission = 'voir' | 'créer' | 'modifier';
 export type PresencePermission = 'view' | 'create' | 'edit' | 'delete' | 'correct' | 'validate' | 'manage' | 'export' | 'reports';
 
+/** Employee role pickers show roles owned by the selected unit only. */
+export function rolesForExactUnit(roles: Role[], sectorId: string): Role[] {
+  return roles.filter(role => role.sectorId === sectorId);
+}
+
 /** Applies the permission ladder to a raw module permission check. */
 export function hasEffectivePermission(
   hasPermission: (moduleId: ModuleId, permission: ModulePermission) => boolean,
