@@ -4,6 +4,7 @@ import {
   Archive,
   ArrowUpRight,
   ArrowDownToLine,
+  Banknote,
   BarChart3,
   Clock3,
   Check,
@@ -33,6 +34,7 @@ import {
 import { Button } from '@workspace/maximus-design-system/components/ui/button';
 import {
   createEcommerceApi,
+  type EcommercePosSale,
   type EcommercePosSalesBootstrap,
   type EcommerceBootstrap,
   type EcommerceCategory,
@@ -437,7 +439,7 @@ export default function EcommerceModulePage({
       )}
 
       {visibleTabs.length === 0 ? <Empty icon={ShoppingBag} title="Aucune fonctionnalité disponible" text="Votre rôle n’a pas encore reçu de fonctionnalité e-commerce." /> : <>
-      {tab === 'dashboard' && <Dashboard data={data} onTab={navigate} />}
+      {tab === 'dashboard' && <Dashboard data={data} posData={posData ?? undefined} onTab={navigate} />}
       {tab === 'accueil' && <HomePanel store={store} canModify={currentCanModify} run={run} />}
       {tab === 'catalogue' && <Catalogue data={data} allowedFeatureIds={allowedFeatureIds} canCreate={currentCanCreate} canModify={currentCanModify} run={run} />}
       {tab === 'vente-comptoir' && posData && (
@@ -485,15 +487,16 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
   return <div className="card-surface rounded-2xl p-8"><div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[hsl(var(--destructive)/.1)] text-[hsl(var(--destructive))]"><Store size={20} /></div><h2 className="mt-4 text-lg font-bold">La boutique n’est pas disponible</h2><p className="mt-2 max-w-lg text-sm leading-6 text-[hsl(var(--muted-foreground))]">{message || 'Une erreur inattendue empêche le chargement de cet espace.'}</p><button type="button" onClick={onRetry} className="btn mt-5 inline-flex items-center gap-2 rounded-lg bg-[hsl(var(--primary))] px-4 py-2.5 text-xs font-bold text-[hsl(var(--primary-foreground))]"><RefreshCw size={14} />Réessayer</button></div>;
 }
 
-function Dashboard({ data, onTab }: { data: EcommerceBootstrap; onTab: (tab: EcommerceTab) => void }) {
+function Dashboard({ data, posData, onTab }: { data: EcommerceBootstrap; posData?: EcommercePosSalesBootstrap; onTab: (tab: EcommerceTab) => void }) {
   const activeProducts = data.products.filter(product => product.status !== 'ARCHIVED');
   const published = activeProducts.filter(product => product.status === 'PUBLISHED').length;
   const pending = data.orders.filter(order => !['LIVRÉE', 'ANNULÉE'].includes(order.status)).length;
-   const revenue = data.orders.filter(order => order.status !== 'ANNULÉE' && order.paymentStatus === 'PAID').reduce((sum, order) => sum + order.total, 0);
+  const onlineRevenue = data.orders.filter(order => order.status !== 'ANNULÉE' && order.paymentStatus === 'PAID').reduce((sum, order) => sum + order.total, 0);
   const lowStock = activeProducts.filter(product => product.stock <= 5);
   return <div className="space-y-5 fade-up">
-    <div className="mobile-kpi-grid grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <Metric label="Chiffre d’affaires" value={money(revenue, data.store.currency)} detail="Commandes non annulées" icon={CircleDollarSign} accent />
+    <div className={`mobile-kpi-grid grid gap-4 sm:grid-cols-2 ${posData ? 'xl:grid-cols-5' : 'xl:grid-cols-4'}`}>
+      <Metric label="CA en ligne" value={money(onlineRevenue, data.store.currency)} detail="Commandes payées non annulées" icon={CircleDollarSign} accent />
+      {posData && <Metric label="CA comptoir aujourd’hui" value={money(posData.summary.todayRevenue, posData.summary.currency)} detail={`${posData.summary.todaySalesCount} vente${posData.summary.todaySalesCount > 1 ? 's' : ''} aujourd’hui`} icon={Banknote} />}
       <Metric label="Commandes à traiter" value={String(pending)} detail="Dans le flux opérationnel" icon={ClipboardList} />
       <Metric label="Catalogue publié" value={`${published}/${activeProducts.length}`} detail="Références visibles en ligne" icon={ShoppingBag} />
       <Metric label="Stock à surveiller" value={String(lowStock.length)} detail="5 unités ou moins" icon={Package} warning={lowStock.length > 0} />
@@ -510,6 +513,11 @@ function Dashboard({ data, onTab }: { data: EcommerceBootstrap; onTab: (tab: Eco
          <div className="mt-5 rounded-xl border border-dashed p-4"><p className="mono text-[9px] font-bold uppercase tracking-[.16em] text-[hsl(var(--muted-foreground))]">Vitrine</p><p className="mt-2 text-sm font-bold">Votre boutique est {data.store.status === 'PUBLISHED' ? 'ouverte au public' : 'en préparation'}.</p><button type="button" onClick={() => onTab('accueil')} className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-[hsl(var(--primary))]">Gérer l’accueil <ArrowUpRight size={13} /></button></div>
       </Panel>
     </div>
+    {posData && <Panel title="Ventes comptoir récentes" description="Les encaissements en magasin sont suivis séparément des commandes en ligne." action={<button type="button" onClick={() => onTab('vente-comptoir')} className="text-xs font-bold text-[hsl(var(--primary))]">Ouvrir la caisse <ChevronRight className="inline" size={14} /></button>}>
+      {posData.sales.length === 0
+        ? <Empty icon={ShoppingBag} title="Pas encore de vente comptoir" text="Les ventes encaissées en magasin apparaîtront ici." />
+        : <div className="divide-y">{posData.sales.slice(0, 5).map(sale => <CounterSaleRow key={sale.id} sale={sale} />)}</div>}
+    </Panel>}
     <Panel title="Performance du catalogue" description="Une lecture rapide de la couverture de votre assortiment.">
       <div className="grid gap-3 sm:grid-cols-3">
         <Insight label="Références actives" value={activeProducts.length} detail="Non archivées" />
@@ -1307,6 +1315,25 @@ function OrderRow({ order, currency }: { order: EcommerceOrder; currency: Ecomme
   return <div className="flex items-center gap-3 py-3.5 first:pt-0 last:pb-0"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[hsl(var(--muted))] text-[hsl(var(--primary))]"><ShoppingBag size={16} /></span><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold">{order.reference} <span className="font-normal text-[hsl(var(--muted-foreground))]">· {order.customerName}</span></p><p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">{dateLabel(order.createdAt)}</p></div><div className="text-right"><p className="text-sm font-bold">{money(order.total, currency)}</p><StatusPill value={order.status} /></div></div>;
 }
 
+function CounterSaleRow({ sale }: { sale: EcommercePosSale }) {
+  const paymentLabel = {
+    CASH: 'Espèces',
+    WAVE: 'Wave',
+    ORANGE_MONEY: 'Orange Money',
+  }[sale.paymentMethod];
+  return <div className="flex items-center gap-3 py-3.5 first:pt-0 last:pb-0">
+    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[hsl(var(--muted))] text-[hsl(var(--primary))]"><Banknote size={16} /></span>
+    <div className="min-w-0 flex-1">
+      <p className="truncate text-sm font-bold">{sale.reference} <span className="font-normal text-[hsl(var(--muted-foreground))]">· {sale.customerName}</span></p>
+      <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">{dateLabel(sale.createdAt)} · {paymentLabel}</p>
+    </div>
+    <div className="text-right">
+      <p className="text-sm font-bold">{money(sale.total, sale.currency)}</p>
+      <StatusPill value={sale.status === 'PAID' ? 'Payée' : 'Remboursée'} />
+    </div>
+  </div>;
+}
+
 function Panel({ title, description, action, children }: { title: string; description?: string; action?: ReactNode; children: ReactNode }) {
   return <section className="card-surface overflow-hidden rounded-2xl"><header className="section-heading border-b px-5 py-4 sm:px-6"><div><h2 className="font-bold">{title}</h2>{description && <p className="mt-1 text-xs leading-5 text-[hsl(var(--muted-foreground))]">{description}</p>}</div>{action}</header><div className="p-5 sm:p-6">{children}</div></section>;
 }
@@ -1324,9 +1351,9 @@ function Empty({ icon: Icon, title, text, action }: { icon: typeof Package; titl
 }
 
 function StatusPill({ value }: { value: string }) {
-  const positive = ['PUBLISHED', 'LIVRÉE', 'Disponible'];
+  const positive = ['PUBLISHED', 'LIVRÉE', 'Disponible', 'Payée'];
   const warning = ['DRAFT', 'NOUVELLE', 'CONFIRMÉE', 'EN PRÉPARATION'];
-  const danger = ['ARCHIVED', 'ANNULÉE'];
+  const danger = ['ARCHIVED', 'ANNULÉE', 'Remboursée'];
   const tone = positive.includes(value) ? 'bg-[hsl(var(--primary)/.12)] text-[hsl(var(--primary))]' : warning.includes(value) ? 'bg-[hsl(var(--accent)/.16)] text-[hsl(var(--foreground))]' : danger.includes(value) ? 'bg-[hsl(var(--destructive)/.1)] text-[hsl(var(--destructive))]' : 'bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]';
   return <span className={`inline-flex rounded-full px-2 py-1 text-[9px] font-bold uppercase tracking-[.06em] ${tone}`}>{value}</span>;
 }
