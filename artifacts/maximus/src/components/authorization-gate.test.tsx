@@ -14,28 +14,24 @@ const render = (g = gate()) => renderToStaticMarkup(
   <AuthorizationGate gate={g}><input type="checkbox" data-testid="inner" /></AuthorizationGate>,
 );
 
-test('gate is locked by default with disabled fieldset and Déverrouiller action', () => {
-  assert.deepEqual(initialGateState, { locked: true, confirming: false });
+test('gate no longer adds lock controls or blocks its settings', () => {
+  assert.deepEqual(initialGateState, { locked: false, confirming: false });
   const html = render();
-  assert.match(html, /data-locked="true"/);
-  assert.match(html, /<fieldset[^>]*\sdisabled=""/);
-  assert.match(html, /authorization-gate-unlock/);
-  assert.match(html, /Déverrouiller/);
+  assert.match(html, /data-testid="inner"/);
+  assert.doesNotMatch(html, /data-locked|authorization-gate-unlock|Déverrouiller|<fieldset/);
 });
 
-test('unlock requires explicit confirmation and cancel keeps it locked', () => {
+test('unlock actions cannot relock settings', () => {
   const requested = gateReducer(initialGateState, 'request');
-  assert.deepEqual(requested, { locked: true, confirming: true });
-  assert.match(render(gate({ confirming: true })), /authorization-gate-confirm-unlock/);
+  assert.deepEqual(requested, initialGateState);
   assert.deepEqual(gateReducer(requested, 'cancel'), initialGateState);
   assert.deepEqual(gateReducer(initialGateState, 'confirm'), initialGateState);
-  assert.equal(gateReducer(requested, 'confirm').locked, false);
 });
 
-test('unlocked gate enables controls and can relock', () => {
+test('settings wrapper stays transparent', () => {
   const html = render(gate({ locked: false }));
-  assert.doesNotMatch(html, /<fieldset[^>]*\sdisabled=""/);
-  assert.match(html, /authorization-gate-relock/);
+  assert.match(html, /data-testid="inner"/);
+  assert.doesNotMatch(html, /authorization-gate-relock|Reverrouiller/);
   assert.deepEqual(gateReducer({ locked: false, confirming: false }, 'relock'), initialGateState);
 });
 

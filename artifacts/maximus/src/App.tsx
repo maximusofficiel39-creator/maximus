@@ -4164,18 +4164,10 @@ function CompanyDetail({
             type="checkbox"
             data-testid="checkbox-company-custom-login"
             checked={Boolean(loginSettings?.customAllowed)}
-            disabled={!loginSettings || loginSaving || authGate.locked}
+              disabled={!loginSettings || loginSaving}
             onChange={(event) => {
-              if (authGate.locked) return;
               const customAllowed = event.target.checked;
-              void authGate.confirmAndRun(
-                {
-                  title: 'Confirmer la modification des autorisations',
-                  description: customAllowed ? 'Autoriser la page de connexion personnalisée pour cette entreprise.' : 'Retirer la page de connexion personnalisée de cette entreprise.',
-                  confirmLabel: 'Enregistrer',
-                },
-                () => saveLoginSettings({ customAllowed }),
-              );
+               void saveLoginSettings({ customAllowed });
             }}
             className="mt-1"
           />
@@ -4192,17 +4184,9 @@ function CompanyDetail({
             <select
               data-testid="select-company-login-mode"
               value={loginSettings?.mode ?? 'MAXIMUS'}
-              disabled={!loginSettings?.customAllowed || loginSaving || authGate.locked}
+              disabled={!loginSettings?.customAllowed || loginSaving}
               onChange={(event) => {
-                if (authGate.locked) return;
-                void authGate.confirmAndRun(
-                  {
-                    title: 'Confirmer la modification des autorisations',
-                    description: 'Modifier le mode de connexion personnalisé de cette entreprise.',
-                    confirmLabel: 'Enregistrer',
-                  },
-                  () => saveLoginSettings({ mode: event.target.value as 'MAXIMUS' | 'CUSTOM' }),
-                );
+               void saveLoginSettings({ mode: event.target.value as 'MAXIMUS' | 'CUSTOM' });
               }}
               className="mt-2 w-full rounded-lg border bg-[hsl(var(--card))] px-3 py-3 text-sm"
             >
@@ -8393,14 +8377,10 @@ function CompanyModulesDetail({
     onError: (error) => showAppToast(error instanceof Error ? error.message : 'La modification n’a pas pu être enregistrée.', 'error'),
   });
   const askAuthorizationSave = (
-    gate: ReturnType<typeof useAuthorizationGate>,
-    description: string,
+    _gate: ReturnType<typeof useAuthorizationGate>,
+    _description: string,
     action: () => Promise<boolean | void> | boolean | void,
-  ) =>
-    gate.confirmAndRun(
-      { title: 'Confirmer la modification des autorisations', description, confirmLabel: 'Enregistrer' },
-      action,
-    );
+  ) => action();
   const configuredModules = getConfiguredModules({
     moduleOverrides: data.moduleOverrides ?? {},
     removedModules: data.removedModules ?? [],
@@ -9408,7 +9388,7 @@ function CompanyModulesDetail({
       )}
       </div>
       <div className={activeCompanySettingsTab === 'access' ? 'space-y-5' : 'hidden'}>
-      <MaximusNavigationSettings company={company} gate={navigationGate} onSaved={onNavigationSaved} />
+      <MaximusNavigationSettings company={company} onSaved={onNavigationSaved} />
       <div className="space-y-5">
       <AuthorizationGate gate={notificationGate} testId="notification-access-authorization-gate" title="Autorisation des notifications verrouillée">
       <CompanyPushNotificationAccess

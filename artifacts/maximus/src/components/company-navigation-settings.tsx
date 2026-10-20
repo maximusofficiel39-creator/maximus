@@ -17,8 +17,6 @@ import {
   companyNavigationMode,
   effectiveCustomAllowed,
 } from '@/lib/company-navigation';
-import { AuthorizationGate } from '@/components/authorization-gate';
-import type { AuthorizationGateController } from '@/lib/authorization-gate';
 import { NavigationSettingsContext } from '@/lib/navigation-settings-context';
 
 const modeOptions: { id: CompanyNavigationMode; label: string; hint: string }[] = [
@@ -128,14 +126,12 @@ export function CompanyNavigationSettingsPanel({ company }: { company: Company }
   );
 }
 
-/** MAXIMUS-side control: mode choice plus the gated grant for company administrators. */
+/** MAXIMUS-side control: mode choice plus the grant for company administrators. */
 export function MaximusNavigationSettings({
   company,
-  gate,
   onSaved,
 }: {
   company: Company;
-  gate: AuthorizationGateController;
   onSaved?: () => Promise<unknown> | void;
 }) {
   const [savedMode, setSavedMode] = useState<CompanyNavigationMode>(companyNavigationMode(company));
@@ -185,16 +181,7 @@ export function MaximusNavigationSettings({
   };
 
   const saveAuthorization = () =>
-    gate.confirmAndRun(
-      {
-        title: allowed ? 'Autoriser la navigation personnalisée' : 'Retirer l’autorisation de navigation',
-        description: allowed
-          ? 'L’administrateur de l’entreprise pourra choisir le mode de navigation.'
-          : 'L’administrateur de l’entreprise ne pourra plus changer le mode. Le mode actuel est conservé.',
-        confirmLabel: 'Enregistrer',
-      },
-      () => persist({ customAllowed: allowed }),
-    );
+    persist({ customAllowed: allowed });
 
   return (
     <Card data-testid="maximus-navigation-settings" className="space-y-4 p-6">
@@ -216,15 +203,14 @@ export function MaximusNavigationSettings({
           {saving ? 'Enregistrement…' : 'Enregistrer le mode'}
         </Button>
       </div>
-      <AuthorizationGate gate={gate} testId="navigation-authorization-gate">
         <div className="space-y-3">
           <label className="flex items-start gap-3 rounded-lg border p-4">
             <Switch
               data-testid="switch-navigation-custom-allowed"
               aria-label="Autoriser l’administrateur de l’entreprise à choisir le mode de navigation"
               checked={allowed}
-              disabled={loading || saving || gate.locked || gate.pending}
-              onCheckedChange={checked => { if (!gate.locked) setAllowed(checked === true); }}
+              disabled={loading || saving}
+              onCheckedChange={checked => setAllowed(checked === true)}
             />
             <span>
               <strong className="block text-sm">Autoriser l’administrateur de l’entreprise à choisir le mode</strong>
@@ -237,14 +223,13 @@ export function MaximusNavigationSettings({
             <Button
               type="button"
               data-testid="button-save-navigation-authorization"
-              disabled={gate.locked || gate.pending || loading || saving || allowed === savedAllowed}
+              disabled={loading || saving || allowed === savedAllowed}
               onClick={() => void saveAuthorization()}
             >
               Enregistrer l’autorisation
             </Button>
           </div>
         </div>
-      </AuthorizationGate>
       <FeedbackLine feedback={feedback} testId="maximus-navigation-feedback" />
     </Card>
   );

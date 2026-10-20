@@ -39,13 +39,11 @@ test('mode choice reflects both menu modes', () => {
   assert.match(horizontal, /<button[^>]*aria-pressed="true"[^>]*navigation-mode-horizontal"|<button[^>]*navigation-mode-horizontal"[^>]*aria-pressed="true"/);
 });
 
-test('maximus grant switch is locked by default', () => {
-  const gate = { locked: true, confirming: false, pending: false, requestUnlock() {}, confirmUnlock() {}, cancelUnlock() {}, relock() {}, confirmAndRun: async () => false };
-  const html = renderToStaticMarkup(<MaximusNavigationSettings company={company()} gate={gate} />);
-  assert.match(html, /data-locked="true"/);
+test('maximus grant switch has no lock or unlock controls', () => {
+  const html = renderToStaticMarkup(<MaximusNavigationSettings company={company()} />);
+  assert.doesNotMatch(html, /data-locked|Déverrouiller|Verrouillé/);
   assert.match(html, /<button[^>]*switch-navigation-custom-allowed[^>]*>/);
-  assert.match(html.match(/<button[^>]*switch-navigation-custom-allowed[^>]*>/)![0], /disabled=""/);
-  assert.match(html.match(/<button[^>]*button-save-navigation-authorization[^>]*>/)![0], /disabled=""/);
+  assert.match(html, /button-save-navigation-authorization/);
 });
 
 test('rail renders only the active module features', () => {

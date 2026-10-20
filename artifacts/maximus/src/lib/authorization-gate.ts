@@ -3,16 +3,15 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 export type GateState = { locked: boolean; confirming: boolean };
 export type GateAction = 'request' | 'confirm' | 'cancel' | 'relock';
 
-export const initialGateState: GateState = { locked: true, confirming: false };
+export const initialGateState: GateState = { locked: false, confirming: false };
 
 export function gateReducer(state: GateState, action: GateAction): GateState {
   switch (action) {
-    case 'request':
-      return state.locked ? { locked: true, confirming: true } : state;
-    case 'confirm':
-      return state.confirming ? { locked: false, confirming: false } : state;
     case 'cancel':
     case 'relock':
+      return initialGateState;
+    case 'request':
+    case 'confirm':
       return initialGateState;
     default:
       return state;
