@@ -50,50 +50,15 @@ final class EcommercePosController extends Controller
             ->orderByDesc('created_at')
             ->limit(50)
             ->get();
-        $expenses = DB::table('ecommerce_pos_expenses')
-            ->where('company_id', $companyId)
-            ->orderByDesc('expense_date')
-            ->orderByDesc('created_at')
-            ->limit(50)
-            ->get();
-        $expenseTotals = DB::table('ecommerce_pos_expenses')
-            ->where('company_id', $companyId)
-            ->where('currency', $currency)
-            ->selectRaw('COALESCE(SUM(amount), 0) AS total')
-            ->selectRaw('COALESCE(SUM(CASE WHEN expense_date = ? THEN amount ELSE 0 END), 0) AS today_total', [now()->toDateString()])
-            ->selectRaw("COALESCE(SUM(CASE WHEN type = 'INVESTMENT' THEN amount ELSE 0 END), 0) AS investment_total")
-            ->selectRaw("COALESCE(SUM(CASE WHEN type = 'PERSONAL' THEN amount ELSE 0 END), 0) AS personal_total")
-            ->first();
-        $grossTotal = (int) DB::table('ecommerce_pos_sales')
-            ->where('company_id', $companyId)
-            ->where('currency', $currency)
-            ->where('status', 'PAID')
-            ->sum('total')
-            + (int) DB::table('ecommerce_orders')
-                ->where('company_id', $companyId)
-                ->where('currency', $currency)
-                ->where('status', '!=', 'ANNULÉE')
-                ->where('payment_status', 'PAID')
-                ->sum('total');
-
         return response()->json([
             'sales' => $this->salesWithItems($companyId, $sales->all()),
-            'expenses' => $expenses->map(fn (object $expense): array => $this->expense($expense))->values(),
             'summary' => $summary,
-            'expenseSummary' => [
-                'total' => (int) $expenseTotals->total,
-                'todayTotal' => (int) $expenseTotals->today_total,
-                'investmentTotal' => (int) $expenseTotals->investment_total,
-                'personalTotal' => (int) $expenseTotals->personal_total,
-                'netToday' => $summary['todayRevenue'] - (int) $expenseTotals->today_total,
-                'netTotal' => $grossTotal - (int) $expenseTotals->total,
-            ],
         ]);
     }
 
     public function createExpense(Request $request): JsonResponse
     {
-        if ($denied = $this->authorizePos($request, 'create')) {
+        if ($denied = $this->authorizeExpenses($request, 'create')) {
             return $denied;
         }
 
@@ -124,6 +89,66 @@ final class EcommercePosController extends Controller
         DB::table('ecommerce_pos_expenses')->insert($row);
 
         return response()->json(['expense' => $this->expense((object) $row)], 201);
+    }
+
+    public function expenses(Request $request): JsonResponse
+    {
+        if ($denied = $this->authorizeExpenses($request, 'view')) {
+            return $denied;
+        }
+
+        $companyId = (string) $request->attributes->get('companyId');
+        if ($companyId === '') {
+            return response()->json(['error' => 'Entreprise requise.'], 400);
+        }
+
+        $currency = (string) (DB::table('ecommerce_stores')
+            ->where('company_id', $companyId)
+            ->value('currency') ?? 'XOF');
+        $expenses = DB::table('ecommerce_pos_expenses')
+            ->where('company_id', $companyId)
+            ->orderByDesc('expense_date')
+            ->orderByDesc('created_at')
+            ->limit(50)
+            ->get();
+        $expenseTotals = DB::table('ecommerce_pos_expenses')
+            ->where('company_id', $companyId)
+            ->where('currency', $currency)
+            ->selectRaw('COALESCE(SUM(amount), 0) AS total')
+            ->selectRaw('COALESCE(SUM(CASE WHEN expense_date = ? THEN amount ELSE 0 END), 0) AS today_total', [now()->toDateString()])
+            ->selectRaw("COALESCE(SUM(CASE WHEN type = 'INVESTMENT' THEN amount ELSE 0 END), 0) AS investment_total")
+            ->selectRaw("COALESCE(SUM(CASE WHEN type = 'PERSONAL' THEN amount ELSE 0 END), 0) AS personal_total")
+            ->first();
+        $grossTotal = (int) DB::table('ecommerce_pos_sales')
+            ->where('company_id', $companyId)
+            ->where('currency', $currency)
+            ->where('status', 'PAID')
+            ->sum('total')
+            + (int) DB::table('ecommerce_orders')
+                ->where('company_id', $companyId)
+                ->where('currency', $currency)
+                ->where('status', '!=', 'ANNULÉE')
+                ->where('payment_status', 'PAID')
+                ->sum('total');
+        $todayCounterRevenue = (int) DB::table('ecommerce_pos_sales')
+            ->where('company_id', $companyId)
+            ->where('currency', $currency)
+            ->where('status', 'PAID')
+            ->whereDate('created_at', now()->toDateString())
+            ->sum('total');
+
+        return response()->json([
+            'currency' => $currency,
+            'expenses' => $expenses->map(fn (object $expense): array => $this->expense($expense))->values(),
+            'expenseSummary' => [
+                'total' => (int) $expenseTotals->total,
+                'todayTotal' => (int) $expenseTotals->today_total,
+                'investmentTotal' => (int) $expenseTotals->investment_total,
+                'personalTotal' => (int) $expenseTotals->personal_total,
+                'netToday' => $todayCounterRevenue - (int) $expenseTotals->today_total,
+                'netTotal' => $grossTotal - (int) $expenseTotals->total,
+            ],
+        ]);
     }
 
     private function expense(object $row): array
@@ -366,6 +391,16 @@ final class EcommercePosController extends Controller
         $actor = $request->attributes->get('authActor', []);
         if (! is_array($actor) || ! ModuleAuthorization::allows($actor, 'ecommerce', $action, 'vente-comptoir')) {
             return response()->json(['error' => 'La fonctionnalité Vente comptoir n’est pas autorisée pour ce compte.'], 403);
+        }
+
+        return null;
+    }
+
+    private function authorizeExpenses(Request $request, string $action): ?JsonResponse
+    {
+        $actor = $request->attributes->get('authActor', []);
+        if (! is_array($actor) || ! ModuleAuthorization::allows($actor, 'ecommerce', $action, 'depenses')) {
+            return response()->json(['error' => 'La fonctionnalité Dépenses n’est pas autorisée pour ce compte.'], 403);
         }
 
         return null;

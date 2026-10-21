@@ -17,6 +17,12 @@ test('shows the sales report only when its own feature is authorized', () => {
   ), false);
 });
 
+test('shows expenses only when their own feature is authorized', () => {
+  assert.equal(isEcommerceTabVisible('depenses', ['vente-comptoir']), false);
+  assert.equal(isEcommerceTabVisible('depenses', ['depenses']), true);
+  assert.equal(isEcommerceTabVisible('depenses', ['depenses'], { depenses: [] }), false);
+});
+
 test('continues to hide operation tabs that the role does not have', () => {
   assert.equal(isEcommerceTabVisible('commandes', ['dashboard']), false);
   assert.equal(isEcommerceTabVisible('commandes', ['commandes']), true);

@@ -81,6 +81,21 @@ test('expose Rapport des ventes comme pack facultatif et à lecture seule', () =
   assert.deepEqual(customPack?.featurePermissions?.['rapport-ventes'], ['voir']);
 });
 
+test('expose Dépenses as a separate feature with its own assignable pack', () => {
+  const ecommerce = modules.find(module => module.id === 'ecommerce');
+  assert.ok(ecommerce);
+
+  assert.deepEqual(
+    getModuleFeatureOptions(ecommerce).find(feature => feature.id === 'depenses'),
+    { id: 'depenses', label: 'Dépenses' },
+  );
+  const expensePack = ecommerce.featurePacks?.find(pack => pack.id === 'ecommerce-depenses');
+  assert.deepEqual(expensePack?.featureIds, ['depenses']);
+  assert.deepEqual(expensePack?.featurePermissions?.depenses, ['voir', 'créer']);
+  const counterPack = ecommerce.featurePacks?.find(pack => pack.id === 'ecommerce-vente-comptoir');
+  assert.equal(counterPack?.featureIds.includes('depenses'), false);
+});
+
 test('expose les autorisations de vente physique et numérique dans e-commerce', () => {
   const ecommerce = modules.find((module) => module.id === 'ecommerce');
   assert.ok(ecommerce);

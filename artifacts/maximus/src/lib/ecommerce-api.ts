@@ -55,7 +55,6 @@ export interface EcommercePosExpense {
 
 export interface EcommercePosSalesBootstrap {
   sales: EcommercePosSale[];
-  expenses: EcommercePosExpense[];
   summary: {
     currency: EcommercePosSale['currency'];
     todaySalesCount: number;
@@ -64,14 +63,21 @@ export interface EcommercePosSalesBootstrap {
     todayMobileMoneyReceived: number;
     todayChangeGiven: number;
   };
-  expenseSummary: {
-    total: number;
-    todayTotal: number;
-    investmentTotal: number;
-    personalTotal: number;
-    netToday: number;
-    netTotal: number;
-  };
+}
+
+export interface EcommerceExpenseSummary {
+  total: number;
+  todayTotal: number;
+  investmentTotal: number;
+  personalTotal: number;
+  netToday: number;
+  netTotal: number;
+}
+
+export interface EcommerceExpensesBootstrap {
+  currency: 'XOF' | 'EUR' | 'USD';
+  expenses: EcommercePosExpense[];
+  expenseSummary: EcommerceExpenseSummary;
 }
 
 export type EcommerceSalesReportSource = 'ONLINE' | 'COUNTER';
@@ -625,6 +631,7 @@ export const createEcommerceApi = (companyId: string) => {
   return {
     bootstrap: () => request<EcommerceBootstrap>(withCompany('/ecommerce/bootstrap')),
     posSales: () => request<EcommercePosSalesBootstrap>(withCompany('/ecommerce/pos-sales')),
+    posExpenses: () => request<EcommerceExpensesBootstrap>(withCompany('/ecommerce/pos-expenses')),
     salesReport: (filters: EcommerceSalesReportFilters) => {
       const query = new URLSearchParams({
         dateFrom: filters.dateFrom,

@@ -34,6 +34,7 @@
 - [Espace client e-commerce](ecommerce-customer-space.md) — les sessions, commandes, adresses, favoris et paniers sont toujours bornés par client et entreprise.
 - [Opt-in du rapport des ventes](sales-report-opt-in.md) — réserver l’accès du rapport à une autorisation explicite, sans l’hériter des anciens accès E-commerce.
 - [Chiffre d’affaires e-commerce](ecommerce-revenue-summary.md) — afficher en continu le cumul et le total du jour en ligne + comptoir, sans mélanger les devises.
+- [Dépenses e-commerce autonomes](ecommerce-expense-feature.md) — garder Dépenses comme rubrique et autorisation distinctes de Vente comptoir, sans héritage automatique des anciens accès.
 - [Stockage des téléversements en production](render-upload-storage.md) — ne pas dépendre du disque local Render pour conserver les ressources publiques.
 - [Limites des téléversements PHP](php-upload-limits.md) — aligner les plafonds client et Laravel sur les directives PHP réelles pour éviter une image omise sans message.
 - [Champs vides du catalogue](catalogue-empty-fields.md) — normaliser les chaînes vides avant insertion, car Laravel peut les convertir en null.

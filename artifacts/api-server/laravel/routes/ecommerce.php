@@ -17,6 +17,7 @@ Route::middleware(['maximus.auth', 'maximus.company', 'maximus.subscription', 'm
         Route::get('/bootstrap', [EcommerceController::class, 'bootstrap']);
         Route::get('/pos-sales', [EcommercePosController::class, 'index']);
         Route::post('/pos-sales', [EcommercePosController::class, 'store'])->middleware('throttle:60,1');
+        Route::get('/pos-expenses', [EcommercePosController::class, 'expenses']);
         Route::post('/pos-expenses', [EcommercePosController::class, 'createExpense'])->middleware('throttle:60,1');
         Route::get('/sales-report', [EcommerceSalesReportController::class, 'index']);
         Route::get('/wallet', [SellerWalletController::class, 'bootstrap']);

@@ -3,7 +3,7 @@ export function isEcommerceTabVisible(
   allowedFeatureIds?: string[],
   featurePermissions?: Partial<Record<string, string[]>>,
 ): boolean {
-  if (tabId === 'rapport-ventes' && featurePermissions && !featurePermissions[tabId]?.includes('voir')) {
+  if (['rapport-ventes', 'depenses'].includes(tabId) && featurePermissions && !featurePermissions[tabId]?.includes('voir')) {
     return false;
   }
   if (!allowedFeatureIds) return true;

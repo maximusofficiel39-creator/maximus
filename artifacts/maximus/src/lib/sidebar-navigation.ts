@@ -74,6 +74,7 @@ const ecommerceFeatureIcons: Record<string, Icon> = {
   categories: Tags,
   commandes: ShoppingCart,
   'rapport-ventes': FileBarChart,
+  depenses: ArrowDownToLine,
   clients: Users,
   promotions: CreditCard,
   livraisons: Warehouse,
@@ -96,11 +97,13 @@ function buildEcommerceNavigationItems(
   module: Module,
   selectedFeatureIds: Set<string>,
   canViewSalesReport: boolean,
+  canViewExpenses: boolean,
 ) {
   const featureItems = getModuleFeatureOptions(module)
     .filter(feature => !ecommerceCapabilityFeatureIds.has(feature.id))
     .filter(feature => selectedFeatureIds.has(feature.id))
     .filter(feature => feature.id !== 'rapport-ventes' || canViewSalesReport)
+    .filter(feature => feature.id !== 'depenses' || canViewExpenses)
     .map(feature => ({
       href: `/entreprise/ecommerce?tab=${feature.id}`,
       label: feature.label,
@@ -215,7 +218,9 @@ export function buildSidebarFeatureGroups({
           );
           const canViewSalesReport = (companyAdmin && !employeeRole)
             || roleHasFeaturePermission(employeeRole, employeeNode, ecommerceModule.id, 'rapport-ventes', 'voir');
-          items.push(...buildEcommerceNavigationItems(ecommerceModule, features, canViewSalesReport));
+          const canViewExpenses = (companyAdmin && !employeeRole)
+            || roleHasFeaturePermission(employeeRole, employeeNode, ecommerceModule.id, 'depenses', 'voir');
+          items.push(...buildEcommerceNavigationItems(ecommerceModule, features, canViewSalesReport, canViewExpenses));
         }
       }
 
@@ -239,6 +244,8 @@ export function buildSidebarFeatureGroups({
             visibleFeatureIds,
             (companyAdmin && !employeeRole)
               || roleHasFeaturePermission(employeeRole, employeeNode, module.id, 'rapport-ventes', 'voir'),
+            (companyAdmin && !employeeRole)
+              || roleHasFeaturePermission(employeeRole, employeeNode, module.id, 'depenses', 'voir'),
           )
         : moduleId === 'presences'
           ? getModuleFeatureOptions(module)

@@ -36,6 +36,7 @@ import {
   createEcommerceApi,
   type EcommercePosSale,
   type EcommercePosSalesBootstrap,
+  type EcommerceExpensesBootstrap,
   type EcommerceBootstrap,
   type EcommerceCategory,
   type EcommerceDeliveryRequest,
@@ -60,6 +61,7 @@ import {
   type SellerWalletBootstrap,
 } from '@/lib/ecommerce-api';
 import EcommercePosPanel from '@/pages/ecommerce-pos-panel';
+import EcommerceExpensesPanel from '@/pages/ecommerce-expenses-panel';
 import EcommerceSalesReportPanel from '@/pages/ecommerce-sales-report-panel';
 import { useQueryTab } from '@/lib/query-tab';
 import { isEcommerceTabVisible } from '@/lib/ecommerce-navigation';
@@ -71,13 +73,14 @@ import { buildPublicProductUrl } from '@/lib/ecommerce-product-link';
 import { showAppToast } from '@workspace/maximus-design-system/hooks/use-toast';
 import { useAutoRefresh } from '@/hooks/use-auto-refresh';
 
-type EcommerceTab = 'dashboard' | 'accueil' | 'catalogue' | 'vente-comptoir' | 'rapport-ventes' | 'categories' | 'commandes' | 'clients' | 'promotions' | 'location' | 'livraisons' | 'finances' | 'parametres';
+type EcommerceTab = 'dashboard' | 'accueil' | 'catalogue' | 'vente-comptoir' | 'depenses' | 'rapport-ventes' | 'categories' | 'commandes' | 'clients' | 'promotions' | 'location' | 'livraisons' | 'finances' | 'parametres';
 
 const tabs: { id: EcommerceTab; label: string; icon: typeof LayoutDashboard }[] = [
   { id: 'dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
   { id: 'accueil', label: 'Accueil', icon: House },
   { id: 'catalogue', label: 'Catalogue', icon: Package },
   { id: 'vente-comptoir', label: 'Vente comptoir', icon: ShoppingBag },
+  { id: 'depenses', label: 'Dépenses', icon: Banknote },
   { id: 'rapport-ventes', label: 'Rapport des ventes', icon: BarChart3 },
   { id: 'categories', label: 'Catégories', icon: Tags },
   { id: 'commandes', label: 'Commandes', icon: ClipboardList },
@@ -283,6 +286,7 @@ export default function EcommerceModulePage({
   const [data, setData] = useState<EcommerceBootstrap | null>(null);
   const [walletData, setWalletData] = useState<SellerWalletBootstrap | null>(null);
   const [posData, setPosData] = useState<EcommercePosSalesBootstrap | null>(null);
+  const [expensesData, setExpensesData] = useState<EcommerceExpensesBootstrap | null>(null);
   const reportSources = useMemo<EcommerceSalesReportSource[]>(
     () => preview ? ['ONLINE', 'COUNTER'] : [],
     [preview],
@@ -328,7 +332,6 @@ export default function EcommerceModulePage({
       setWalletData(null);
       setPosData({
         sales: [],
-        expenses: [],
         summary: {
           currency: 'XOF',
           todaySalesCount: 0,
@@ -337,6 +340,10 @@ export default function EcommerceModulePage({
           todayMobileMoneyReceived: 0,
           todayChangeGiven: 0,
         },
+      });
+      setExpensesData({
+        currency: 'XOF',
+        expenses: [],
         expenseSummary: { total: 0, todayTotal: 0, investmentTotal: 0, personalTotal: 0, netToday: 0, netTotal: 0 },
       });
       setError('');
@@ -345,15 +352,17 @@ export default function EcommerceModulePage({
       return;
     }
     try {
-      const [bootstrap, nextWalletData, nextPosData] = await Promise.all([
+      const [bootstrap, nextWalletData, nextPosData, nextExpensesData] = await Promise.all([
         api.bootstrap(),
         visibleTabIds.includes('finances') ? api.wallet() : Promise.resolve(null),
         visibleTabIds.includes('vente-comptoir') ? api.posSales() : Promise.resolve(null),
+        visibleTabIds.includes('depenses') ? api.posExpenses() : Promise.resolve(null),
       ]);
       const nextData = normalizeEcommerceBootstrap(bootstrap, companyId);
       setData(nextData);
       setWalletData(nextWalletData);
       setPosData(nextPosData);
+      setExpensesData(nextExpensesData);
       setError('');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Impossible de charger l’espace e-commerce.');
@@ -448,7 +457,7 @@ export default function EcommerceModulePage({
       )}
 
       {visibleTabs.length === 0 ? <Empty icon={ShoppingBag} title="Aucune fonctionnalité disponible" text="Votre rôle n’a pas encore reçu de fonctionnalité e-commerce." /> : <>
-      {tab === 'dashboard' && <Dashboard data={data} posData={posData ?? undefined} onTab={navigate} />}
+      {tab === 'dashboard' && <Dashboard data={data} posData={posData ?? undefined} expensesData={expensesData ?? undefined} onTab={navigate} />}
       {tab === 'accueil' && <HomePanel store={store} canModify={currentCanModify} run={run} />}
       {tab === 'catalogue' && <Catalogue data={data} allowedFeatureIds={allowedFeatureIds} canCreate={currentCanCreate} canModify={currentCanModify} run={run} />}
       {tab === 'vente-comptoir' && posData && (
@@ -456,9 +465,7 @@ export default function EcommerceModulePage({
           idempotencyScope={companyId}
           products={data.products}
           sales={posData.sales}
-          expenses={posData.expenses}
           summary={posData.summary}
-          expenseSummary={posData.expenseSummary}
           revenueSummary={data.revenueSummary}
           currency={store.currency}
           canCreate={currentCanCreate}
@@ -468,6 +475,12 @@ export default function EcommerceModulePage({
             void load(true);
             return result.sale;
           }}
+        />
+      )}
+      {tab === 'depenses' && expensesData && (
+        <EcommerceExpensesPanel
+          data={expensesData}
+          canCreate={currentCanCreate}
           onCreateExpense={async input => {
             await api.createPosExpense(input);
             await load(true);
@@ -503,7 +516,7 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
   return <div className="card-surface rounded-2xl p-8"><div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[hsl(var(--destructive)/.1)] text-[hsl(var(--destructive))]"><Store size={20} /></div><h2 className="mt-4 text-lg font-bold">La boutique n’est pas disponible</h2><p className="mt-2 max-w-lg text-sm leading-6 text-[hsl(var(--muted-foreground))]">{message || 'Une erreur inattendue empêche le chargement de cet espace.'}</p><button type="button" onClick={onRetry} className="btn mt-5 inline-flex items-center gap-2 rounded-lg bg-[hsl(var(--primary))] px-4 py-2.5 text-xs font-bold text-[hsl(var(--primary-foreground))]"><RefreshCw size={14} />Réessayer</button></div>;
 }
 
-function Dashboard({ data, posData, onTab }: { data: EcommerceBootstrap; posData?: EcommercePosSalesBootstrap; onTab: (tab: EcommerceTab) => void }) {
+function Dashboard({ data, posData, expensesData, onTab }: { data: EcommerceBootstrap; posData?: EcommercePosSalesBootstrap; expensesData?: EcommerceExpensesBootstrap; onTab: (tab: EcommerceTab) => void }) {
   const activeProducts = data.products.filter(product => product.status !== 'ARCHIVED');
   const published = activeProducts.filter(product => product.status === 'PUBLISHED').length;
   const pending = data.orders.filter(order => !['LIVRÉE', 'ANNULÉE'].includes(order.status)).length;
@@ -512,8 +525,8 @@ function Dashboard({ data, posData, onTab }: { data: EcommerceBootstrap; posData
     <div className="mobile-kpi-grid grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
       <Metric label="CA cumulé" value={revenueBreakdown(data.revenueSummary)} detail="En ligne + comptoir · cumulé depuis le début" icon={CircleDollarSign} accent />
       <Metric label="CA total aujourd’hui" value={revenueBreakdown(data.revenueSummary, 'todayTotal')} detail="Ventes payées en ligne + comptoir" icon={Banknote} />
-      {posData && <Metric label="Dépenses cumulées" value={money(posData.expenseSummary.total, posData.summary.currency)} detail="Investissements + dépenses personnelles" icon={Banknote} />}
-      {posData && <Metric label="Solde net cumulé" value={money(posData.expenseSummary.netTotal, posData.summary.currency)} detail="CA brut de la devise boutique − dépenses" icon={CircleDollarSign} />}
+      {expensesData && <Metric label="Dépenses cumulées" value={money(expensesData.expenseSummary.total, expensesData.currency)} detail="Investissements + dépenses personnelles" icon={Banknote} />}
+      {expensesData && <Metric label="Solde net cumulé" value={money(expensesData.expenseSummary.netTotal, expensesData.currency)} detail="CA brut de la devise boutique − dépenses" icon={CircleDollarSign} />}
       <Metric label="Commandes à traiter" value={String(pending)} detail="Dans le flux opérationnel" icon={ClipboardList} />
       <Metric label="Catalogue publié" value={`${published}/${activeProducts.length}`} detail="Références visibles en ligne" icon={ShoppingBag} />
       <Metric label="Stock à surveiller" value={String(lowStock.length)} detail="5 unités ou moins" icon={Package} warning={lowStock.length > 0} />

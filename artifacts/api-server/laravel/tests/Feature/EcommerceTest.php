@@ -582,7 +582,7 @@ class EcommerceTest extends TestCase
 
     public function test_pos_expenses_are_tenant_scoped_and_separate_from_gross_revenue(): void
     {
-        $this->setEcommerceFeatures(['dashboard', 'catalogue', 'vente-physique', 'vente-comptoir']);
+        $this->setEcommerceFeatures(['dashboard', 'depenses']);
         DB::table('ecommerce_stores')->updateOrInsert(
             ['id' => 'ecommerce-store-kora'],
             [
@@ -633,14 +633,21 @@ class EcommerceTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        $request->getJson('/api/ecommerce/pos-sales?companyId=kora')
+        $request->getJson('/api/ecommerce/pos-expenses?companyId=kora')
             ->assertOk()
+            ->assertJsonPath('currency', 'XOF')
             ->assertJsonPath('expenseSummary.total', 700)
             ->assertJsonPath('expenseSummary.todayTotal', 500)
             ->assertJsonPath('expenseSummary.investmentTotal', 500)
             ->assertJsonPath('expenseSummary.personalTotal', 200)
             ->assertJsonPath('expenseSummary.netToday', -500)
             ->assertJsonMissing(['id' => 'other-company-expense']);
+        $request->getJson('/api/ecommerce/pos-sales?companyId=kora')->assertForbidden();
+
+        $this->setEcommerceFeatures(['dashboard', 'catalogue', 'vente-physique', 'vente-comptoir']);
+        $request
+            ->getJson('/api/ecommerce/pos-expenses?companyId=kora')
+            ->assertForbidden();
     }
 
     public function test_disabled_ecommerce_module_is_rejected_by_the_server(): void

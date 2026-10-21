@@ -623,7 +623,7 @@ test('limite le menu e-commerce de l’administrateur aux fonctionnalités chois
   );
 });
 
-test('ne donne pas automatiquement la vente comptoir aux anciens accès e-commerce', () => {
+test('ne donne pas automatiquement la vente comptoir ni les dépenses aux anciens accès e-commerce', () => {
   const { data, company } = createAccessFixture();
   company.requestedModules = ['ecommerce'];
   company.allowedModules = ['ecommerce'];
@@ -641,8 +641,12 @@ test('ne donne pas automatiquement la vente comptoir aux anciens accès e-commer
   });
 
   assert.equal(access.selectedEcommerceFeatureIds?.includes('vente-comptoir'), false);
+  assert.equal(access.selectedEcommerceFeatureIds?.includes('depenses'), false);
   assert.equal(access.sidebarFeatureGroups.some(group =>
     group.items.some(item => item.href.endsWith('?tab=vente-comptoir')),
+  ), false);
+  assert.equal(access.sidebarFeatureGroups.some(group =>
+    group.items.some(item => item.href.endsWith('?tab=depenses')),
   ), false);
 });
 

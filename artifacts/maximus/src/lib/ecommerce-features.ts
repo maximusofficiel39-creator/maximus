@@ -3,6 +3,7 @@ export const ecommerceFeatureDefinitions = [
   { id: 'catalogue', label: 'Catalogue' },
   { id: 'vente-physique', label: 'Vente de produits physiques' },
   { id: 'vente-comptoir', label: 'Vente comptoir' },
+  { id: 'depenses', label: 'Dépenses' },
   { id: 'vente-numerique', label: 'Vente de produits numériques' },
   { id: 'categories', label: 'Catégories' },
   { id: 'commandes', label: 'Commandes' },
@@ -62,6 +63,15 @@ export const ecommerceFeaturePacks = [
     featureIds: ['rapport-ventes'],
     featurePermissions: {
       'rapport-ventes': ['voir'],
+    },
+  },
+  {
+    id: 'ecommerce-depenses',
+    name: 'Dépenses',
+    description: 'Saisir les investissements et dépenses personnelles, séparément du chiffre d’affaires.',
+    featureIds: ['depenses'],
+    featurePermissions: {
+      depenses: ['voir', 'créer'],
     },
   },
   {
@@ -130,11 +140,11 @@ export const ecommerceFeaturePacks = [
     name: 'Supervision boutique',
     description: 'Superviser les ventes physiques et numériques, les promotions et les livraisons.',
     featureIds: ecommerceFeatureDefinitions
-        .filter(feature => !['vente-comptoir', 'rapport-ventes'].includes(feature.id))
+        .filter(feature => !['vente-comptoir', 'rapport-ventes', 'depenses'].includes(feature.id))
       .map(feature => feature.id),
     featurePermissions: Object.fromEntries(
       ecommerceFeatureDefinitions
-        .filter(feature => !['vente-comptoir', 'rapport-ventes'].includes(feature.id))
+        .filter(feature => !['vente-comptoir', 'rapport-ventes', 'depenses'].includes(feature.id))
         .map(feature => [
         feature.id,
         feature.id === 'dashboard' || feature.id === 'clients'
