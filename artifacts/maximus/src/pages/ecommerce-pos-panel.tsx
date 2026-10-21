@@ -208,24 +208,27 @@ export default function EcommercePosPanel({
 
   return (
     <div className="space-y-5" data-testid="panel-pos">
-      <section aria-label="Résumé des ventes du jour" className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-        <Card className="p-4" data-testid="metric-pos-sales-count">
+      <section
+        aria-label="Résumé des ventes du jour"
+        className="flex min-w-0 gap-3 overflow-x-auto pb-1 md:grid md:grid-cols-3 md:overflow-visible md:pb-0 xl:grid-cols-5"
+      >
+        <Card className="w-36 shrink-0 p-4 md:w-auto" data-testid="metric-pos-sales-count">
           <p className="text-xs font-medium text-muted-foreground">Ventes du jour</p>
           <p className="mt-2 text-2xl font-semibold tabular-nums">{summary.todaySalesCount}</p>
         </Card>
-        <Card className="p-4" data-testid="metric-pos-revenue">
+        <Card className="w-36 shrink-0 p-4 md:w-auto" data-testid="metric-pos-revenue">
           <p className="text-xs font-medium text-muted-foreground">Chiffre d’affaires</p>
           <p className="mt-2 text-xl font-semibold tabular-nums">{money(summary.todayRevenue, currency)}</p>
         </Card>
-        <Card className="p-4" data-testid="metric-pos-cash-received">
+        <Card className="w-36 shrink-0 p-4 md:w-auto" data-testid="metric-pos-cash-received">
           <p className="text-xs font-medium text-muted-foreground">Espèces reçues</p>
           <p className="mt-2 text-xl font-semibold tabular-nums">{money(summary.todayCashReceived, currency)}</p>
         </Card>
-        <Card className="p-4" data-testid="metric-pos-mobile-money-received">
+        <Card className="w-36 shrink-0 p-4 md:w-auto" data-testid="metric-pos-mobile-money-received">
           <p className="text-xs font-medium text-muted-foreground">Wave &amp; Orange Money</p>
           <p className="mt-2 text-xl font-semibold tabular-nums">{money(summary.todayMobileMoneyReceived, currency)}</p>
         </Card>
-        <Card className="p-4" data-testid="metric-pos-change-given">
+        <Card className="w-36 shrink-0 p-4 md:w-auto" data-testid="metric-pos-change-given">
           <p className="text-xs font-medium text-muted-foreground">Monnaie rendue</p>
           <p className="mt-2 text-xl font-semibold tabular-nums">{money(summary.todayChangeGiven, currency)}</p>
         </Card>

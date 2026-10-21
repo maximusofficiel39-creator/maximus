@@ -84,7 +84,7 @@ class AuthController extends Controller
             ->withCookie(cookie(
                 MaximusAuth::COOKIE,
                 $token,
-                480,
+                MaximusAuth::sessionCookieMinutes($user),
                 '/',
                 null,
                 app()->environment('production'),
@@ -167,7 +167,7 @@ class AuthController extends Controller
             ->withCookie(cookie(
                 MaximusAuth::COOKIE,
                 $token,
-                480,
+                MaximusAuth::sessionCookieMinutes($user),
                 '/',
                 null,
                 app()->environment('production'),
@@ -450,6 +450,10 @@ class AuthController extends Controller
         if ($user->company_id !== null) {
             $seenAt = now();
             try {
+                $token = MaximusAuth::refreshCompanySession($request, $user);
+                if ($token === null) {
+                    return response()->json(['error' => 'Session MAXIMUS absente ou expirée.'], 401);
+                }
                 AuthUser::query()->whereKey($user->id)->update(['last_seen_at' => $seenAt]);
             } catch (QueryException $exception) {
                 report($exception);
@@ -459,7 +463,22 @@ class AuthController extends Controller
             $seenAt = null;
         }
 
-        return response()->json(['ok' => true, 'seenAt' => $seenAt]);
+        $response = response()->json(['ok' => true, 'seenAt' => $seenAt]);
+        if ($user->company_id !== null) {
+            $response->withCookie(cookie(
+                MaximusAuth::COOKIE,
+                $token,
+                MaximusAuth::sessionCookieMinutes($user),
+                '/',
+                null,
+                app()->environment('production'),
+                true,
+                false,
+                'lax',
+            ));
+        }
+
+        return $response;
     }
 
     private function recordLoginActivity(AuthUser $user): void

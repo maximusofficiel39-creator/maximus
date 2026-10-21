@@ -39,12 +39,19 @@ class MaximusAuthTest extends TestCase
             'password' => 'Admin123!',
         ])->assertOk();
         $companyToken = $login->getCookie(MaximusAuth::COOKIE, false)->getValue();
+        $companySession = AuthSession::query()
+            ->where('token_hash', MaximusAuth::hashToken($companyToken))
+            ->firstOrFail();
+        $this->assertTrue($companySession->expires_at->greaterThan(now()->addDays(29)));
+        $this->assertSame(30 * 24 * 60 * 60, $login->getCookie(MaximusAuth::COOKIE, false)->getMaxAge());
 
-        $this->withCredentials()
+        $heartbeat = $this->withCredentials()
             ->withUnencryptedCookie(MaximusAuth::COOKIE, $companyToken)
             ->postJson('/api/auth/heartbeat')
             ->assertOk()
             ->assertJsonPath('ok', true);
+        $this->assertTrue($companySession->fresh()->expires_at->greaterThan(now()->addDays(29)));
+        $this->assertSame(30 * 24 * 60 * 60, $heartbeat->getCookie(MaximusAuth::COOKIE, false)->getMaxAge());
 
         $activity = $companyUser->fresh();
         $this->assertNotNull($activity?->last_login_at);
@@ -110,6 +117,8 @@ class MaximusAuthTest extends TestCase
         $storedSession = AuthSession::query()->first();
         $this->assertNotNull($storedSession);
         $this->assertSame($storedSession->token_hash, MaximusAuth::hashToken($cookie));
+        $this->assertTrue($storedSession->expires_at->greaterThan(now()->addHours(7)));
+        $this->assertSame(8 * 60 * 60, $login->getCookie(MaximusAuth::COOKIE, false)->getMaxAge());
         $session = $this
             ->withCredentials()
             ->withUnencryptedCookie('maximus_session', $cookie)
