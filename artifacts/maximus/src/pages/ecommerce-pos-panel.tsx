@@ -17,6 +17,7 @@ import type {
   EcommercePosPaymentMethod,
   EcommercePosSale,
   EcommercePosSalesBootstrap,
+  EcommerceBootstrap,
   EcommerceProduct,
   EcommerceStore,
 } from '@/lib/ecommerce-api';
@@ -26,6 +27,7 @@ type EcommercePosPanelProps = {
   products: EcommerceProduct[];
   sales: EcommercePosSale[];
   summary: EcommercePosSalesBootstrap['summary'];
+  revenueSummary: EcommerceBootstrap['revenueSummary'];
   currency: EcommerceStore['currency'];
   canCreate: boolean;
   loading: boolean;
@@ -73,7 +75,7 @@ function PosLoadingState() {
   return (
     <div className="space-y-4" aria-label="Chargement du point de vente" data-testid="status-pos-loading">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-        {Array.from({ length: 5 }, (_, index) => (
+        {Array.from({ length: 6 }, (_, index) => (
           <Card className="p-4" key={index}>
             <Skeleton className="mb-3 h-3 w-24" />
             <Skeleton className="h-6 w-32" />
@@ -102,6 +104,7 @@ export default function EcommercePosPanel({
   products,
   sales,
   summary,
+  revenueSummary,
   currency,
   canCreate,
   loading,
@@ -210,15 +213,29 @@ export default function EcommercePosPanel({
     <div className="space-y-5" data-testid="panel-pos">
       <section
         aria-label="Résumé des ventes du jour"
-        className="flex min-w-0 gap-3 overflow-x-auto pb-1 md:grid md:grid-cols-3 md:overflow-visible md:pb-0 xl:grid-cols-5"
+        className="flex min-w-0 gap-3 overflow-x-auto pb-1 md:grid md:grid-cols-3 md:overflow-visible md:pb-0 xl:grid-cols-6"
       >
         <Card className="w-36 shrink-0 p-4 md:w-auto" data-testid="metric-pos-sales-count">
           <p className="text-xs font-medium text-muted-foreground">Ventes du jour</p>
           <p className="mt-2 text-2xl font-semibold tabular-nums">{summary.todaySalesCount}</p>
         </Card>
         <Card className="w-36 shrink-0 p-4 md:w-auto" data-testid="metric-pos-revenue">
-          <p className="text-xs font-medium text-muted-foreground">Chiffre d’affaires</p>
+          <p className="text-xs font-medium text-muted-foreground">CA cumulé</p>
+          <p className="mt-2 break-words text-xl font-semibold leading-6 tabular-nums">
+            {revenueSummary.length
+              ? revenueSummary.map(row => `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: row.currency === 'XOF' ? 0 : 2 }).format(row.total)} ${row.currency}`).join(' · ')
+              : '0 XOF'}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            CA total aujourd’hui : {revenueSummary.length
+              ? revenueSummary.map(row => `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: row.currency === 'XOF' ? 0 : 2 }).format(row.todayTotal)} ${row.currency}`).join(' · ')
+              : '0 XOF'}
+          </p>
+        </Card>
+        <Card className="w-36 shrink-0 p-4 md:w-auto" data-testid="metric-pos-daily-revenue">
+          <p className="text-xs font-medium text-muted-foreground">CA comptoir aujourd’hui</p>
           <p className="mt-2 text-xl font-semibold tabular-nums">{money(summary.todayRevenue, currency)}</p>
+          <p className="mt-1 text-xs text-muted-foreground">Ventes payées en caisse</p>
         </Card>
         <Card className="w-36 shrink-0 p-4 md:w-auto" data-testid="metric-pos-cash-received">
           <p className="text-xs font-medium text-muted-foreground">Espèces reçues</p>

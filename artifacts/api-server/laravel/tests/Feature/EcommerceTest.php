@@ -250,9 +250,26 @@ class EcommerceTest extends TestCase
         $createOrder('report-online-unpaid', 'kora', 'WEB-UNPAID', 2000, 'NOUVELLE', 'UNPAID', 'USD', $now->copy()->subMinute());
         $createOrder('report-online-refunded', 'kora', 'WEB-REFUNDED', 3000, 'ANNULÉE', 'REFUNDED', null, $now->copy()->subMinutes(2));
         $createOrder('report-online-legacy-paid', 'kora', 'WEB-LEGACY', 4000, 'LIVRÉE', 'PAID', null, $now->copy()->subMinutes(2));
+        $createOrder('report-online-past-paid', 'kora', 'WEB-PAST', 500, 'LIVRÉE', 'PAID', 'XOF', $now->copy()->subYear());
         $createOrder('report-other-company', 'other-company', 'WEB-OTHER', 99000, 'LIVRÉE', 'PAID', 'XOF', $now);
 
         DB::table('ecommerce_pos_sales')->insert([
+            [
+                'id' => 'report-pos-past-paid',
+                'company_id' => 'kora',
+                'reference' => 'POS-PAST',
+                'idempotency_key' => 'report-pos-past-key',
+                'customer_name' => 'Client comptoir historique',
+                'currency' => 'EUR',
+                'subtotal' => 10,
+                'total' => 10,
+                'amount_received' => 10,
+                'change_due' => 0,
+                'status' => 'PAID',
+                'payment_method' => 'CASH',
+                'created_at' => $now->copy()->subYear(),
+                'updated_at' => $now->copy()->subYear(),
+            ],
             [
                 'id' => 'report-pos-paid',
                 'company_id' => 'kora',
@@ -322,6 +339,12 @@ class EcommerceTest extends TestCase
             ->assertJsonMissing(['reference' => 'POS-OTHER']);
 
         $this->assertCount(2, $response->json('sales'));
+        $request
+            ->getJson('/api/ecommerce/bootstrap?companyId=kora')
+            ->assertOk()
+            ->assertJsonFragment(['currency' => 'XOF', 'total' => 10500, 'online' => 10500, 'counter' => 0])
+            ->assertJsonFragment(['currency' => 'EUR', 'total' => 35, 'online' => 0, 'counter' => 35, 'todayTotal' => 25, 'todayCounter' => 25])
+            ->assertJsonFragment(['currency' => 'INCONNUE', 'total' => 4000, 'online' => 4000, 'counter' => 0, 'todayTotal' => 4000, 'todayOnline' => 4000]);
         $request
             ->getJson("/api/ecommerce/sales-report?companyId=kora&dateFrom={$date}&dateTo={$date}&source=COUNTER")
             ->assertOk()

@@ -100,6 +100,12 @@ const allowedNextStatuses = (status: EcommerceOrderStatus): EcommerceOrderStatus
 }[status] as EcommerceOrderStatus[]);
 const money = (value: number, currency: EcommerceStore['currency'] = 'XOF') =>
   new Intl.NumberFormat('fr-FR', { maximumFractionDigits: currency === 'XOF' ? 0 : 2 }).format(value) + ` ${currency}`;
+const revenueAmount = (value: number, currency: string) =>
+  `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: currency === 'XOF' ? 0 : 2 }).format(value)} ${currency}`;
+const revenueBreakdown = (rows: EcommerceBootstrap['revenueSummary'], field: 'total' | 'online' | 'counter' | 'todayTotal' | 'todayOnline' | 'todayCounter' = 'total') =>
+  rows.length
+    ? rows.map(row => revenueAmount(row[field], row.currency)).join(' · ')
+    : '0 XOF';
 const dateLabel = (value: string) => {
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? value : new Intl.DateTimeFormat('fr-FR', { dateStyle: 'medium' }).format(parsed);
@@ -315,6 +321,7 @@ export default function EcommerceModulePage({
         products: [],
         rentals: [],
         orders: [],
+        revenueSummary: [],
         deliveryZones: [],
         deliveryRequests: [],
       });
@@ -448,6 +455,7 @@ export default function EcommerceModulePage({
           products={data.products}
           sales={posData.sales}
           summary={posData.summary}
+          revenueSummary={data.revenueSummary}
           currency={store.currency}
           canCreate={currentCanCreate}
           loading={!posData}
@@ -491,12 +499,11 @@ function Dashboard({ data, posData, onTab }: { data: EcommerceBootstrap; posData
   const activeProducts = data.products.filter(product => product.status !== 'ARCHIVED');
   const published = activeProducts.filter(product => product.status === 'PUBLISHED').length;
   const pending = data.orders.filter(order => !['LIVRÉE', 'ANNULÉE'].includes(order.status)).length;
-  const onlineRevenue = data.orders.filter(order => order.status !== 'ANNULÉE' && order.paymentStatus === 'PAID').reduce((sum, order) => sum + order.total, 0);
   const lowStock = activeProducts.filter(product => product.stock <= 5);
   return <div className="space-y-5 fade-up">
-    <div className={`mobile-kpi-grid grid gap-4 sm:grid-cols-2 ${posData ? 'xl:grid-cols-5' : 'xl:grid-cols-4'}`}>
-      <Metric label="CA en ligne" value={money(onlineRevenue, data.store.currency)} detail="Commandes payées non annulées" icon={CircleDollarSign} accent />
-      {posData && <Metric label="CA comptoir aujourd’hui" value={money(posData.summary.todayRevenue, posData.summary.currency)} detail={`${posData.summary.todaySalesCount} vente${posData.summary.todaySalesCount > 1 ? 's' : ''} aujourd’hui`} icon={Banknote} />}
+    <div className="mobile-kpi-grid grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <Metric label="CA cumulé" value={revenueBreakdown(data.revenueSummary)} detail="En ligne + comptoir · cumulé depuis le début" icon={CircleDollarSign} accent />
+      <Metric label="CA total aujourd’hui" value={revenueBreakdown(data.revenueSummary, 'todayTotal')} detail="Ventes payées en ligne + comptoir" icon={Banknote} />
       <Metric label="Commandes à traiter" value={String(pending)} detail="Dans le flux opérationnel" icon={ClipboardList} />
       <Metric label="Catalogue publié" value={`${published}/${activeProducts.length}`} detail="Références visibles en ligne" icon={ShoppingBag} />
       <Metric label="Stock à surveiller" value={String(lowStock.length)} detail="5 unités ou moins" icon={Package} warning={lowStock.length > 0} />
@@ -1339,7 +1346,7 @@ function Panel({ title, description, action, children }: { title: string; descri
 }
 
 function Metric({ label, value, detail, icon: Icon, accent, warning }: { label: string; value: string; detail: string; icon: typeof CircleDollarSign; accent?: boolean; warning?: boolean }) {
-  return <div className={`metric-card card-surface rounded-xl p-4 ${accent ? 'border-[hsl(var(--primary)/.3)]' : ''}`}><div className="flex items-start justify-between gap-2"><span className={`flex h-9 w-9 items-center justify-center rounded-lg ${warning ? 'bg-[hsl(var(--accent)/.18)] text-[hsl(var(--foreground))]' : 'bg-[hsl(var(--primary)/.1)] text-[hsl(var(--primary))]'}`}><Icon size={17} /></span><span className="mono text-[9px] uppercase tracking-[.14em] text-[hsl(var(--muted-foreground))]">Live</span></div><p className="mt-5 text-xs text-[hsl(var(--muted-foreground))]">{label}</p><p className="mt-1 text-2xl font-bold tracking-[-.04em]">{value}</p><p className="mt-1 text-[11px] text-[hsl(var(--muted-foreground))]">{detail}</p></div>;
+  return <div className={`metric-card card-surface rounded-xl p-4 ${accent ? 'border-[hsl(var(--primary)/.3)]' : ''}`}><div className="flex items-start justify-between gap-2"><span className={`flex h-9 w-9 items-center justify-center rounded-lg ${warning ? 'bg-[hsl(var(--accent)/.18)] text-[hsl(var(--foreground))]' : 'bg-[hsl(var(--primary)/.1)] text-[hsl(var(--primary))]'}`}><Icon size={17} /></span><span className="mono text-[9px] uppercase tracking-[.14em] text-[hsl(var(--muted-foreground))]">Live</span></div><p className="mt-5 text-xs text-[hsl(var(--muted-foreground))]">{label}</p><p className="mt-1 break-words text-2xl font-bold leading-6 tracking-[-.04em]">{value}</p><p className="mt-1 text-[11px] text-[hsl(var(--muted-foreground))]">{detail}</p></div>;
 }
 
 function Insight({ label, value, detail }: { label: string; value: number; detail: string }) {

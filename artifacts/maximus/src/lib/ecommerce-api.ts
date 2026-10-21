@@ -361,6 +361,15 @@ export interface EcommerceBootstrap {
   products: EcommerceProduct[];
   rentals: EcommerceRental[];
   orders: EcommerceOrder[];
+  revenueSummary: Array<{
+    currency: 'XOF' | 'EUR' | 'USD' | 'INCONNUE';
+    total: number;
+    online: number;
+    counter: number;
+    todayTotal: number;
+    todayOnline: number;
+    todayCounter: number;
+  }>;
   deliveryZones: EcommerceDeliveryZone[];
   deliveryRequests: EcommerceDeliveryRequest[];
 }

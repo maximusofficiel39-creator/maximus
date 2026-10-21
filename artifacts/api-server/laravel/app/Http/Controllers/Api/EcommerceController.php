@@ -66,6 +66,7 @@ class EcommerceController extends Controller
                 ->values(),
             'rentals' => $this->listRentals($company, true),
             'orders' => $this->orders($company),
+            'revenueSummary' => $this->revenueSummary($company),
             'deliveryZones' => $this->listDeliveryZones($company),
             'deliveryRequests' => $this->listDeliveryRequests($company),
         ]);
@@ -2319,6 +2320,75 @@ class EcommerceController extends Controller
             $items->get($row->id, collect())->values()->all(),
             $attachments->get($row->id, collect())->values()->all(),
         ))->values()->all();
+    }
+
+    /**
+     * Paid revenue grouped by the currency captured on each sale, both cumulative
+     * and for the current day.
+     *
+     * @return array<int, array{currency: string, total: int, online: int, counter: int, todayTotal: int, todayOnline: int, todayCounter: int}>
+     */
+    private function revenueSummary(string $company): array
+    {
+        $totals = [];
+        $sources = [
+            'online' => [
+                'enabled' => ModuleCatalog::allowsFeature($company, 'ecommerce', 'commandes'),
+                'table' => 'ecommerce_orders',
+                'currency' => "COALESCE(currency, 'INCONNUE')",
+            ],
+            'counter' => [
+                'enabled' => ModuleCatalog::allowsFeature($company, 'ecommerce', 'vente-comptoir'),
+                'table' => 'ecommerce_pos_sales',
+                'currency' => 'currency',
+            ],
+        ];
+        $today = now()->startOfDay();
+
+        foreach ($sources as $source => $definition) {
+            if (! $definition['enabled']) {
+                continue;
+            }
+
+            $query = DB::table($definition['table'])->where('company_id', $company);
+            if ($source === 'online') {
+                $query->where('status', '!=', 'ANNULÉE')->where('payment_status', 'PAID');
+            } else {
+                $query->where('status', 'PAID');
+            }
+
+            $currencyExpression = $definition['currency'];
+            $rows = $query
+                ->selectRaw($currencyExpression.' AS currency')
+                ->selectRaw('SUM(total) AS amount')
+                ->selectRaw('SUM(CASE WHEN created_at >= ? THEN total ELSE 0 END) AS today_amount', [$today])
+                ->groupByRaw($currencyExpression)
+                ->get();
+
+            foreach ($rows as $row) {
+                $currency = (string) $row->currency;
+                $totals[$currency] ??= [
+                    'currency' => $currency,
+                    'total' => 0,
+                    'online' => 0,
+                    'counter' => 0,
+                    'todayTotal' => 0,
+                    'todayOnline' => 0,
+                    'todayCounter' => 0,
+                ];
+                $amount = (int) $row->amount;
+                $todayAmount = (int) $row->today_amount;
+                $totals[$currency][$source] += $amount;
+                $totals[$currency]['total'] += $amount;
+                $todaySource = $source === 'online' ? 'todayOnline' : 'todayCounter';
+                $totals[$currency][$todaySource] += $todayAmount;
+                $totals[$currency]['todayTotal'] += $todayAmount;
+            }
+        }
+
+        ksort($totals);
+
+        return array_values($totals);
     }
 
     private function store(object $row): array
