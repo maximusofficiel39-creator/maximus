@@ -328,6 +328,7 @@ export default function EcommerceModulePage({
       setWalletData(null);
       setPosData({
         sales: [],
+        expenses: [],
         summary: {
           currency: 'XOF',
           todaySalesCount: 0,
@@ -336,6 +337,7 @@ export default function EcommerceModulePage({
           todayMobileMoneyReceived: 0,
           todayChangeGiven: 0,
         },
+        expenseSummary: { total: 0, todayTotal: 0, investmentTotal: 0, personalTotal: 0, netToday: 0, netTotal: 0 },
       });
       setError('');
       setLoading(false);
@@ -454,7 +456,9 @@ export default function EcommerceModulePage({
           idempotencyScope={companyId}
           products={data.products}
           sales={posData.sales}
+          expenses={posData.expenses}
           summary={posData.summary}
+          expenseSummary={posData.expenseSummary}
           revenueSummary={data.revenueSummary}
           currency={store.currency}
           canCreate={currentCanCreate}
@@ -463,6 +467,10 @@ export default function EcommerceModulePage({
             const result = await api.createPosSale(input);
             void load(true);
             return result.sale;
+          }}
+          onCreateExpense={async input => {
+            await api.createPosExpense(input);
+            await load(true);
           }}
         />
       )}
@@ -504,6 +512,8 @@ function Dashboard({ data, posData, onTab }: { data: EcommerceBootstrap; posData
     <div className="mobile-kpi-grid grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
       <Metric label="CA cumulé" value={revenueBreakdown(data.revenueSummary)} detail="En ligne + comptoir · cumulé depuis le début" icon={CircleDollarSign} accent />
       <Metric label="CA total aujourd’hui" value={revenueBreakdown(data.revenueSummary, 'todayTotal')} detail="Ventes payées en ligne + comptoir" icon={Banknote} />
+      {posData && <Metric label="Dépenses cumulées" value={money(posData.expenseSummary.total, posData.summary.currency)} detail="Investissements + dépenses personnelles" icon={Banknote} />}
+      {posData && <Metric label="Solde net cumulé" value={money(posData.expenseSummary.netTotal, posData.summary.currency)} detail="CA brut de la devise boutique − dépenses" icon={CircleDollarSign} />}
       <Metric label="Commandes à traiter" value={String(pending)} detail="Dans le flux opérationnel" icon={ClipboardList} />
       <Metric label="Catalogue publié" value={`${published}/${activeProducts.length}`} detail="Références visibles en ligne" icon={ShoppingBag} />
       <Metric label="Stock à surveiller" value={String(lowStock.length)} detail="5 unités ou moins" icon={Package} warning={lowStock.length > 0} />

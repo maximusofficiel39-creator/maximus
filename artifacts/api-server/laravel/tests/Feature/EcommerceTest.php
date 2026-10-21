@@ -580,6 +580,69 @@ class EcommerceTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_pos_expenses_are_tenant_scoped_and_separate_from_gross_revenue(): void
+    {
+        $this->setEcommerceFeatures(['dashboard', 'catalogue', 'vente-physique', 'vente-comptoir']);
+        DB::table('ecommerce_stores')->updateOrInsert(
+            ['id' => 'ecommerce-store-kora'],
+            [
+                'company_id' => 'kora',
+                'slug' => 'kora-boutique',
+                'name' => 'Boutique KORA',
+                'description' => '',
+                'status' => 'PUBLISHED',
+                'currency' => 'XOF',
+                'primary_color' => '#D69E2E',
+                'accent_color' => '#172033',
+                'logo_url' => '',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        );
+
+        $request = $this->asActor();
+        $today = now()->toDateString();
+        $yesterday = now()->subDay()->toDateString();
+        $todayResponse = $request->postJson('/api/ecommerce/pos-expenses?companyId=kora', [
+            'type' => 'INVESTMENT',
+            'amount' => 500,
+            'description' => 'Équipement',
+            'expenseDate' => $today,
+        ])->assertCreated()->assertJsonPath('expense.type', 'INVESTMENT');
+        $this->assertDatabaseHas('ecommerce_pos_expenses', [
+            'id' => $todayResponse->json('expense.id'),
+            'company_id' => 'kora',
+            'currency' => 'XOF',
+            'amount' => 500,
+        ]);
+        $request->postJson('/api/ecommerce/pos-expenses?companyId=kora', [
+            'type' => 'PERSONAL',
+            'amount' => 200,
+            'expenseDate' => $yesterday,
+        ])->assertCreated();
+
+        DB::table('ecommerce_pos_expenses')->insert([
+            'id' => 'other-company-expense',
+            'company_id' => 'other-company',
+            'type' => 'PERSONAL',
+            'description' => '',
+            'amount' => 9000,
+            'currency' => 'XOF',
+            'expense_date' => $today,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $request->getJson('/api/ecommerce/pos-sales?companyId=kora')
+            ->assertOk()
+            ->assertJsonPath('expenseSummary.total', 700)
+            ->assertJsonPath('expenseSummary.todayTotal', 500)
+            ->assertJsonPath('expenseSummary.investmentTotal', 500)
+            ->assertJsonPath('expenseSummary.personalTotal', 200)
+            ->assertJsonPath('expenseSummary.netToday', -500)
+            ->assertJsonMissing(['id' => 'other-company-expense']);
+    }
+
     public function test_disabled_ecommerce_module_is_rejected_by_the_server(): void
     {
         DB::table('maximus_company_modules')

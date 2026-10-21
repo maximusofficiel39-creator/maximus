@@ -15,6 +15,7 @@ import {
 import { Skeleton } from '@workspace/maximus-design-system/components/ui/skeleton';
 import type {
   EcommercePosPaymentMethod,
+  EcommercePosExpense,
   EcommercePosSale,
   EcommercePosSalesBootstrap,
   EcommerceBootstrap,
@@ -26,7 +27,9 @@ type EcommercePosPanelProps = {
   idempotencyScope: string;
   products: EcommerceProduct[];
   sales: EcommercePosSale[];
+  expenses: EcommercePosExpense[];
   summary: EcommercePosSalesBootstrap['summary'];
+  expenseSummary: EcommercePosSalesBootstrap['expenseSummary'];
   revenueSummary: EcommerceBootstrap['revenueSummary'];
   currency: EcommerceStore['currency'];
   canCreate: boolean;
@@ -39,6 +42,12 @@ type EcommercePosPanelProps = {
     customerName?: string;
     idempotencyKey: string;
   }): Promise<EcommercePosSale>;
+  onCreateExpense(input: {
+    type: EcommercePosExpense['type'];
+    amount: number;
+    description?: string;
+    expenseDate: string;
+  }): Promise<void>;
 };
 
 type CartLine = {
@@ -50,6 +59,13 @@ const money = (amount: number, currency: EcommerceStore['currency']) =>
   `${new Intl.NumberFormat('fr-FR', {
     maximumFractionDigits: currency === 'XOF' ? 0 : 2,
   }).format(amount)} ${currency}`;
+
+const localDate = () => {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${now.getFullYear()}-${month}-${day}`;
+};
 
 const dateTime = (value: string) => {
   const date = new Date(value);
@@ -103,12 +119,15 @@ export default function EcommercePosPanel({
   idempotencyScope,
   products,
   sales,
+  expenses,
   summary,
+  expenseSummary,
   revenueSummary,
   currency,
   canCreate,
   loading,
   onCreateSale,
+  onCreateExpense,
 }: EcommercePosPanelProps) {
   const [search, setSearch] = useState('');
   const [cart, setCart] = useState<Record<string, CartLine>>({});
@@ -119,6 +138,12 @@ export default function EcommercePosPanel({
   const [pending, setPending] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [completedSale, setCompletedSale] = useState<EcommercePosSale | null>(null);
+  const [expenseType, setExpenseType] = useState<EcommercePosExpense['type']>('INVESTMENT');
+  const [expenseAmount, setExpenseAmount] = useState('');
+  const [expenseDescription, setExpenseDescription] = useState('');
+  const [expenseDate, setExpenseDate] = useState(localDate);
+  const [expenseError, setExpenseError] = useState('');
+  const [expensePending, setExpensePending] = useState(false);
   const idempotencyKeysByPayload = useRef(new Map<string, string>());
 
   const availableProducts = useMemo(
@@ -204,6 +229,27 @@ export default function EcommercePosPanel({
       setSubmitError(error instanceof Error ? error.message : 'La vente n’a pas pu être enregistrée. Réessayez.');
     } finally {
       setPending(false);
+    }
+  };
+
+  const submitExpense = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!canCreate || expensePending || !Number.isSafeInteger(Number(expenseAmount)) || Number(expenseAmount) < 1) return;
+    setExpensePending(true);
+    setExpenseError('');
+    try {
+      await onCreateExpense({
+        type: expenseType,
+        amount: Number(expenseAmount),
+        description: expenseDescription.trim(),
+        expenseDate,
+      });
+      setExpenseAmount('');
+      setExpenseDescription('');
+    } catch (error) {
+      setExpenseError(error instanceof Error ? error.message : 'La dépense n’a pas pu être enregistrée.');
+    } finally {
+      setExpensePending(false);
     }
   };
 
@@ -560,6 +606,41 @@ export default function EcommercePosPanel({
               ))}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Dépenses et solde</CardTitle>
+          <p className="text-sm text-muted-foreground">Le CA brut reste séparé des dépenses enregistrées.</p>
+        </CardHeader>
+        <CardContent className="space-y-4 pt-0">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+            <div className="rounded-lg border border-border p-3"><p className="text-xs text-muted-foreground">Dépenses cumulées</p><p className="mt-1 font-semibold tabular-nums">{money(expenseSummary.total, currency)}</p></div>
+            <div className="rounded-lg border border-border p-3"><p className="text-xs text-muted-foreground">Solde net cumulé</p><p className="mt-1 font-semibold tabular-nums">{money(expenseSummary.netTotal, currency)}</p><p className="text-[11px] text-muted-foreground">CA brut − dépenses</p></div>
+            <div className="rounded-lg border border-border p-3"><p className="text-xs text-muted-foreground">Investissements</p><p className="mt-1 font-semibold tabular-nums">{money(expenseSummary.investmentTotal, currency)}</p></div>
+            <div className="rounded-lg border border-border p-3"><p className="text-xs text-muted-foreground">Dépenses personnelles</p><p className="mt-1 font-semibold tabular-nums">{money(expenseSummary.personalTotal, currency)}</p></div>
+            <div className="rounded-lg border border-border p-3"><p className="text-xs text-muted-foreground">Solde caisse du jour</p><p className="mt-1 font-semibold tabular-nums">{money(expenseSummary.netToday, currency)}</p><p className="text-[11px] text-muted-foreground">CA comptoir − dépenses du jour</p></div>
+          </div>
+          {canCreate && <form className="grid gap-3 rounded-lg border border-border p-3 sm:grid-cols-2 xl:grid-cols-5" onSubmit={submitExpense}>
+            <Select value={expenseType} onValueChange={value => setExpenseType(value as EcommercePosExpense['type'])}>
+              <SelectTrigger aria-label="Type de dépense"><SelectValue /></SelectTrigger>
+              <SelectContent><SelectItem value="INVESTMENT">Investissement</SelectItem><SelectItem value="PERSONAL">Dépense personnelle</SelectItem></SelectContent>
+            </Select>
+            <Input aria-label="Montant de la dépense" type="number" min="1" step="1" required placeholder={`Montant (${currency})`} value={expenseAmount} onChange={event => setExpenseAmount(event.target.value)} />
+            <Input aria-label="Description de la dépense" maxLength={500} placeholder="Description (facultative)" value={expenseDescription} onChange={event => setExpenseDescription(event.target.value)} />
+            <Input aria-label="Date de la dépense" type="date" required value={expenseDate} onChange={event => setExpenseDate(event.target.value)} />
+            <Button disabled={expensePending || !expenseAmount} type="submit">{expensePending ? 'Enregistrement…' : 'Ajouter la dépense'}</Button>
+            {expenseError && <p className="text-sm text-destructive sm:col-span-2 xl:col-span-5" role="alert">{expenseError}</p>}
+          </form>}
+          <div className="space-y-2">
+            {expenses.length === 0 ? <p className="text-sm text-muted-foreground">Aucune dépense enregistrée.</p> : expenses.slice(0, 8).map(expense => (
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border py-2 last:border-0" key={expense.id}>
+                <div><p className="text-sm font-medium">{expense.type === 'INVESTMENT' ? 'Investissement' : 'Dépense personnelle'}{expense.description ? ` · ${expense.description}` : ''}</p><p className="text-xs text-muted-foreground">{expense.expenseDate}</p></div>
+                <p className="font-semibold tabular-nums">{money(expense.amount, expense.currency)}</p>
+              </div>
+            ))}
+          </div>
         </CardContent>
       </Card>
     </div>

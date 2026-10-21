@@ -43,8 +43,19 @@ export interface EcommercePosSale {
   items: EcommercePosSaleItem[];
 }
 
+export interface EcommercePosExpense {
+  id: string;
+  type: 'INVESTMENT' | 'PERSONAL';
+  description: string;
+  amount: number;
+  currency: 'XOF' | 'EUR' | 'USD';
+  expenseDate: string;
+  createdAt: string;
+}
+
 export interface EcommercePosSalesBootstrap {
   sales: EcommercePosSale[];
+  expenses: EcommercePosExpense[];
   summary: {
     currency: EcommercePosSale['currency'];
     todaySalesCount: number;
@@ -52,6 +63,14 @@ export interface EcommercePosSalesBootstrap {
     todayCashReceived: number;
     todayMobileMoneyReceived: number;
     todayChangeGiven: number;
+  };
+  expenseSummary: {
+    total: number;
+    todayTotal: number;
+    investmentTotal: number;
+    personalTotal: number;
+    netToday: number;
+    netTotal: number;
   };
 }
 
@@ -628,6 +647,11 @@ export const createEcommerceApi = (companyId: string) => {
         headers: { 'Idempotency-Key': idempotencyKey },
       });
     },
+    createPosExpense: (body: { type: EcommercePosExpense['type']; amount: number; description?: string; expenseDate: string }) =>
+      request<{ expense: EcommercePosExpense }>(withCompany('/ecommerce/pos-expenses'), {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
     wallet: () => request<SellerWalletBootstrap>(withCompany('/ecommerce/wallet')),
     reconcilePayments: () => request<{ sync: { checked: number; updated: number; failed: number }; wallet: SellerWallet }>(withCompany('/ecommerce/wallet/reconcile'), { method: 'POST' }),
     updatePayoutAccount: (body: { provider: 'WAVE'; mobile: string; beneficiaryName: string }) =>
