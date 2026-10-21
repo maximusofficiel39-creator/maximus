@@ -91,7 +91,7 @@ test('expose Dépenses as a separate feature with its own assignable pack', () =
   );
   const expensePack = ecommerce.featurePacks?.find(pack => pack.id === 'ecommerce-depenses');
   assert.deepEqual(expensePack?.featureIds, ['depenses']);
-  assert.deepEqual(expensePack?.featurePermissions?.depenses, ['voir', 'créer']);
+  assert.deepEqual(expensePack?.featurePermissions?.depenses, ['voir', 'créer', 'modifier']);
   const counterPack = ecommerce.featurePacks?.find(pack => pack.id === 'ecommerce-vente-comptoir');
   assert.equal(counterPack?.featureIds.includes('depenses'), false);
 });

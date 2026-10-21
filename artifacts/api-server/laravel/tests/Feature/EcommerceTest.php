@@ -582,7 +582,7 @@ class EcommerceTest extends TestCase
 
     public function test_pos_expenses_are_tenant_scoped_and_separate_from_gross_revenue(): void
     {
-        $this->setEcommerceFeatures(['dashboard', 'depenses']);
+        $this->setEcommerceFeatures(['dashboard', 'depenses', 'investissements']);
         DB::table('ecommerce_stores')->updateOrInsert(
             ['id' => 'ecommerce-store-kora'],
             [
@@ -633,7 +633,7 @@ class EcommerceTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        $request->getJson('/api/ecommerce/pos-expenses?companyId=kora')
+        $request->getJson('/api/ecommerce/pos-expenses?companyId=kora&type=INVESTMENT')
             ->assertOk()
             ->assertJsonPath('currency', 'XOF')
             ->assertJsonPath('expenseSummary.total', 700)
@@ -646,8 +646,64 @@ class EcommerceTest extends TestCase
 
         $this->setEcommerceFeatures(['dashboard', 'catalogue', 'vente-physique', 'vente-comptoir']);
         $request
-            ->getJson('/api/ecommerce/pos-expenses?companyId=kora')
+            ->getJson('/api/ecommerce/pos-expenses?companyId=kora&type=PERSONAL')
             ->assertForbidden();
+    }
+
+    public function test_expense_and_investment_categories_are_tenant_scoped_and_use_separate_features(): void
+    {
+        $this->setEcommerceFeatures(['dashboard', 'depenses', 'investissements']);
+        $request = $this->asActor();
+        $expenseCategory = $request->postJson('/api/ecommerce/expense-categories?companyId=kora', [
+            'kind' => 'EXPENSE',
+            'name' => 'Transport',
+        ])->assertCreated()->json('category');
+        $investmentCategory = $request->postJson('/api/ecommerce/expense-categories?companyId=kora', [
+            'kind' => 'INVESTMENT',
+            'name' => 'Équipement',
+        ])->assertCreated()->json('category');
+
+        $request->getJson('/api/ecommerce/expense-categories?companyId=kora&kind=EXPENSE')
+            ->assertOk()
+            ->assertJsonCount(1, 'categories')
+            ->assertJsonPath('categories.0.id', $expenseCategory['id']);
+        $request->postJson('/api/ecommerce/pos-expenses?companyId=kora', [
+            'type' => 'PERSONAL',
+            'categoryId' => $expenseCategory['id'],
+            'amount' => 1200,
+            'expenseDate' => now()->toDateString(),
+        ])->assertCreated()->assertJsonPath('expense.categoryName', 'Transport');
+        $request->postJson('/api/ecommerce/pos-expenses?companyId=kora', [
+            'type' => 'INVESTMENT',
+            'categoryId' => $investmentCategory['id'],
+            'amount' => 25000,
+            'expenseDate' => now()->toDateString(),
+        ])->assertCreated()->assertJsonPath('expense.categoryName', 'Équipement');
+
+        $this->setEcommerceFeatures(['dashboard', 'depenses']);
+        $request->getJson('/api/ecommerce/expense-categories?companyId=kora&kind=INVESTMENT')
+            ->assertForbidden();
+        $request->postJson('/api/ecommerce/expense-categories?companyId=kora', [
+            'kind' => 'INVESTMENT',
+            'name' => 'Véhicule',
+        ])->assertForbidden();
+    }
+
+    public function test_expense_category_actions_follow_the_view_create_modify_ladder(): void
+    {
+        $this->setEcommerceFeatures(['dashboard', 'depenses', 'investissements']);
+        $request = $this->asActor('employee', [
+            'ecommerce:menu:depenses' => ['voir', 'créer'],
+        ]);
+        $category = $request->postJson('/api/ecommerce/expense-categories?companyId=kora', [
+            'kind' => 'EXPENSE',
+            'name' => 'Transport',
+        ])->assertCreated()->json('category');
+
+        $request->getJson('/api/ecommerce/expense-categories?companyId=kora&kind=EXPENSE')->assertOk();
+        $request->patchJson('/api/ecommerce/expense-categories/'.$category['id'].'?companyId=kora', [
+            'name' => 'Déplacements',
+        ])->assertForbidden();
     }
 
     public function test_disabled_ecommerce_module_is_rejected_by_the_server(): void

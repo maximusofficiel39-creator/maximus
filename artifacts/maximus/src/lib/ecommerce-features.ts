@@ -4,6 +4,7 @@ export const ecommerceFeatureDefinitions = [
   { id: 'vente-physique', label: 'Vente de produits physiques' },
   { id: 'vente-comptoir', label: 'Vente comptoir' },
   { id: 'depenses', label: 'Dépenses' },
+  { id: 'investissements', label: 'Investissements' },
   { id: 'vente-numerique', label: 'Vente de produits numériques' },
   { id: 'categories', label: 'Catégories' },
   { id: 'commandes', label: 'Commandes' },
@@ -71,7 +72,16 @@ export const ecommerceFeaturePacks = [
     description: 'Saisir les investissements et dépenses personnelles, séparément du chiffre d’affaires.',
     featureIds: ['depenses'],
     featurePermissions: {
-      depenses: ['voir', 'créer'],
+      depenses: ['voir', 'créer', 'modifier'],
+    },
+  },
+  {
+    id: 'ecommerce-investissements',
+    name: 'Investissements',
+    description: 'Enregistrer et suivre les investissements avec leurs catégories.',
+    featureIds: ['investissements'],
+    featurePermissions: {
+      investissements: ['voir', 'créer', 'modifier'],
     },
   },
   {

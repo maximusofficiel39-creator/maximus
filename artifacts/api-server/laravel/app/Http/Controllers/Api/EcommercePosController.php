@@ -58,7 +58,11 @@ final class EcommercePosController extends Controller
 
     public function createExpense(Request $request): JsonResponse
     {
-        if ($denied = $this->authorizeExpenses($request, 'create')) {
+        $type = strtoupper(trim((string) $request->input('type', '')));
+        Validator::make(['type' => $type], [
+            'type' => ['required', 'in:INVESTMENT,PERSONAL'],
+        ])->validate();
+        if ($denied = $this->authorizeExpenses($request, 'create', $type)) {
             return $denied;
         }
 
@@ -72,14 +76,26 @@ final class EcommercePosController extends Controller
             'amount' => ['required', 'integer', 'min:1', 'max:2147483647'],
             'description' => ['nullable', 'string', 'max:500'],
             'expenseDate' => ['required', 'date_format:Y-m-d'],
+            'categoryId' => ['nullable', 'string', 'max:36'],
         ])->validate();
+        $categoryKind = $type === 'INVESTMENT' ? 'INVESTMENT' : 'EXPENSE';
+        $categoryId = trim((string) ($input['categoryId'] ?? ''));
+        if ($categoryId !== '' && ! DB::table('ecommerce_expense_categories')
+            ->where('company_id', $companyId)
+            ->where('kind', $categoryKind)
+            ->where('id', $categoryId)
+            ->where('is_active', true)
+            ->exists()) {
+            return response()->json(['error' => 'Choisissez une catégorie active de cette fonctionnalité.'], 422);
+        }
         $actor = $request->attributes->get('authActor', []);
         $row = [
             'id' => (string) Str::uuid(),
             'company_id' => $companyId,
             'created_by' => is_array($actor) && isset($actor['userId']) ? (string) $actor['userId'] : null,
-            'type' => $input['type'],
+            'type' => $type,
             'description' => trim((string) ($input['description'] ?? '')),
+            'category_id' => $categoryId !== '' ? $categoryId : null,
             'amount' => (int) $input['amount'],
             'currency' => (string) (DB::table('ecommerce_stores')->where('company_id', $companyId)->value('currency') ?? 'XOF'),
             'expense_date' => $input['expenseDate'],
@@ -87,13 +103,23 @@ final class EcommercePosController extends Controller
             'updated_at' => now(),
         ];
         DB::table('ecommerce_pos_expenses')->insert($row);
+        $row['category_name'] = $categoryId !== ''
+            ? (string) DB::table('ecommerce_expense_categories')
+                ->where('company_id', $companyId)
+                ->where('id', $categoryId)
+                ->value('name')
+            : '';
 
         return response()->json(['expense' => $this->expense((object) $row)], 201);
     }
 
     public function expenses(Request $request): JsonResponse
     {
-        if ($denied = $this->authorizeExpenses($request, 'view')) {
+        $type = strtoupper(trim((string) $request->query('type', '')));
+        Validator::make(['type' => $type], [
+            'type' => ['required', 'in:INVESTMENT,PERSONAL'],
+        ])->validate();
+        if ($denied = $this->authorizeExpenses($request, 'view', $type)) {
             return $denied;
         }
 
@@ -106,11 +132,24 @@ final class EcommercePosController extends Controller
             ->where('company_id', $companyId)
             ->value('currency') ?? 'XOF');
         $expenses = DB::table('ecommerce_pos_expenses')
+            ->where('ecommerce_pos_expenses.company_id', $companyId)
+            ->where('ecommerce_pos_expenses.type', $type)
+            ->leftJoin('ecommerce_expense_categories', function ($join) use ($companyId): void {
+                $join->on('ecommerce_expense_categories.id', '=', 'ecommerce_pos_expenses.category_id')
+                    ->where('ecommerce_expense_categories.company_id', '=', $companyId);
+            })
+            ->orderByDesc('ecommerce_pos_expenses.expense_date')
+            ->orderByDesc('ecommerce_pos_expenses.created_at')
+            ->limit(100)
+            ->get(['ecommerce_pos_expenses.*', 'ecommerce_expense_categories.name as category_name']);
+        $categoryKind = $type === 'INVESTMENT' ? 'INVESTMENT' : 'EXPENSE';
+        $categories = DB::table('ecommerce_expense_categories')
             ->where('company_id', $companyId)
-            ->orderByDesc('expense_date')
-            ->orderByDesc('created_at')
-            ->limit(50)
-            ->get();
+            ->where('kind', $categoryKind)
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get(['id', 'name']);
         $expenseTotals = DB::table('ecommerce_pos_expenses')
             ->where('company_id', $companyId)
             ->where('currency', $currency)
@@ -139,6 +178,11 @@ final class EcommercePosController extends Controller
 
         return response()->json([
             'currency' => $currency,
+            'type' => $type,
+            'categories' => $categories->map(fn (object $category): array => [
+                'id' => (string) $category->id,
+                'name' => (string) $category->name,
+            ])->values(),
             'expenses' => $expenses->map(fn (object $expense): array => $this->expense($expense))->values(),
             'expenseSummary' => [
                 'total' => (int) $expenseTotals->total,
@@ -157,6 +201,8 @@ final class EcommercePosController extends Controller
             'id' => (string) $row->id,
             'type' => (string) $row->type,
             'description' => (string) $row->description,
+            'categoryId' => isset($row->category_id) ? (string) $row->category_id : null,
+            'categoryName' => isset($row->category_name) ? (string) $row->category_name : '',
             'amount' => (int) $row->amount,
             'currency' => (string) $row->currency,
             'expenseDate' => (string) $row->expense_date,
@@ -396,11 +442,12 @@ final class EcommercePosController extends Controller
         return null;
     }
 
-    private function authorizeExpenses(Request $request, string $action): ?JsonResponse
+    private function authorizeExpenses(Request $request, string $action, string $type): ?JsonResponse
     {
         $actor = $request->attributes->get('authActor', []);
-        if (! is_array($actor) || ! ModuleAuthorization::allows($actor, 'ecommerce', $action, 'depenses')) {
-            return response()->json(['error' => 'La fonctionnalité Dépenses n’est pas autorisée pour ce compte.'], 403);
+        $feature = $type === 'INVESTMENT' ? 'investissements' : 'depenses';
+        if (! is_array($actor) || ! ModuleAuthorization::allows($actor, 'ecommerce', $action, $feature)) {
+            return response()->json(['error' => 'Cette fonctionnalité financière n’est pas autorisée pour ce compte.'], 403);
         }
 
         return null;

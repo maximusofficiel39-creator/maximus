@@ -14,12 +14,14 @@ import type { EcommerceExpensesBootstrap, EcommercePosExpense } from '@/lib/ecom
 
 type EcommerceExpensesPanelProps = {
   data: EcommerceExpensesBootstrap;
+  mode: 'PERSONAL' | 'INVESTMENT';
   canCreate: boolean;
   onCreateExpense(input: {
     type: EcommercePosExpense['type'];
     amount: number;
     description?: string;
     expenseDate: string;
+    categoryId?: string;
   }): Promise<void>;
 };
 
@@ -33,10 +35,11 @@ const money = (amount: number, currency: EcommerceExpensesBootstrap['currency'])
     maximumFractionDigits: currency === 'XOF' ? 0 : 2,
   }).format(amount)} ${currency}`;
 
-export default function EcommerceExpensesPanel({ data, canCreate, onCreateExpense }: EcommerceExpensesPanelProps) {
-  const [type, setType] = useState<EcommercePosExpense['type']>('INVESTMENT');
+export default function EcommerceExpensesPanel({ data, mode, canCreate, onCreateExpense }: EcommerceExpensesPanelProps) {
+  const [type] = useState<EcommercePosExpense['type']>(mode);
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
+  const [categoryId, setCategoryId] = useState('__none__');
   const [expenseDate, setExpenseDate] = useState(localDate);
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
@@ -54,9 +57,11 @@ export default function EcommerceExpensesPanel({ data, canCreate, onCreateExpens
         amount: numericAmount,
         description: description.trim(),
         expenseDate,
+        ...(categoryId !== '__none__' ? { categoryId } : {}),
       });
       setAmount('');
       setDescription('');
+      setCategoryId('__none__');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'La dépense n’a pas pu être enregistrée.');
     } finally {
@@ -65,7 +70,7 @@ export default function EcommerceExpensesPanel({ data, canCreate, onCreateExpens
   };
 
   return (
-    <div className="space-y-5" data-testid="panel-ecommerce-expenses">
+    <div className="space-y-5" data-testid={`panel-ecommerce-${mode === 'INVESTMENT' ? 'investments' : 'expenses'}`}>
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5" aria-label="Résumé des dépenses">
         <Card className="p-4"><p className="text-xs font-medium text-muted-foreground">Dépenses cumulées</p><p className="mt-2 text-xl font-semibold tabular-nums">{money(summary.total, data.currency)}</p></Card>
         <Card className="p-4"><p className="text-xs font-medium text-muted-foreground">Solde net cumulé</p><p className="mt-2 text-xl font-semibold tabular-nums">{money(summary.netTotal, data.currency)}</p><p className="mt-1 text-xs text-muted-foreground">CA brut − dépenses</p></Card>
@@ -76,20 +81,20 @@ export default function EcommerceExpensesPanel({ data, canCreate, onCreateExpens
 
       {canCreate && <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Enregistrer une dépense</CardTitle>
-          <p className="text-sm text-muted-foreground">Le chiffre d’affaires brut reste séparé des dépenses.</p>
+          <CardTitle className="text-base">{mode === 'INVESTMENT' ? 'Enregistrer un investissement' : 'Enregistrer une dépense'}</CardTitle>
+          <p className="text-sm text-muted-foreground">Le chiffre d’affaires brut reste séparé des sorties de caisse.</p>
         </CardHeader>
         <CardContent className="pt-0">
           <form className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5" onSubmit={submit}>
-            <Select value={type} onValueChange={value => setType(value as EcommercePosExpense['type'])}>
-              <SelectTrigger aria-label="Type de dépense"><SelectValue /></SelectTrigger>
+            <Select value={categoryId} onValueChange={setCategoryId}>
+              <SelectTrigger aria-label="Catégorie"><SelectValue placeholder="Catégorie (facultative)" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="INVESTMENT">Investissement</SelectItem>
-                <SelectItem value="PERSONAL">Dépense personnelle</SelectItem>
+                <SelectItem value="__none__">Sans catégorie</SelectItem>
+                {data.categories.map(category => <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>)}
               </SelectContent>
             </Select>
             <Input aria-label="Montant de la dépense" type="number" min="1" step="1" required placeholder={`Montant (${data.currency})`} value={amount} onChange={event => setAmount(event.target.value)} />
-            <Input aria-label="Description de la dépense" maxLength={500} placeholder="Description (facultative)" value={description} onChange={event => setDescription(event.target.value)} />
+            <Input aria-label={mode === 'INVESTMENT' ? 'Description de l’investissement' : 'Description de la dépense'} maxLength={500} placeholder="Description (facultative)" value={description} onChange={event => setDescription(event.target.value)} />
             <Input aria-label="Date de la dépense" type="date" required value={expenseDate} onChange={event => setExpenseDate(event.target.value)} />
             <Button disabled={pending || !amount} type="submit">{pending ? 'Enregistrement…' : 'Ajouter la dépense'}</Button>
             {error && <p className="text-sm text-destructive sm:col-span-2 xl:col-span-5" role="alert">{error}</p>}
@@ -116,7 +121,7 @@ export default function EcommerceExpensesPanel({ data, canCreate, onCreateExpens
             {data.expenses.map(expense => (
               <article className="flex flex-wrap items-center justify-between gap-3 border-b border-border py-3 last:border-0" key={expense.id}>
                 <div className="min-w-0">
-                  <p className="font-medium">{expense.type === 'INVESTMENT' ? 'Investissement' : 'Dépense personnelle'}</p>
+                  <p className="font-medium">{expense.categoryName || (expense.type === 'INVESTMENT' ? 'Investissement' : 'Dépense personnelle')}</p>
                   {expense.description && <p className="mt-0.5 break-words text-sm text-muted-foreground">{expense.description}</p>}
                   <p className="mt-1 text-xs text-muted-foreground">{expense.expenseDate}</p>
                 </div>

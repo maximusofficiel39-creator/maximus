@@ -19,6 +19,9 @@ Route::middleware(['maximus.auth', 'maximus.company', 'maximus.subscription', 'm
         Route::post('/pos-sales', [EcommercePosController::class, 'store'])->middleware('throttle:60,1');
         Route::get('/pos-expenses', [EcommercePosController::class, 'expenses']);
         Route::post('/pos-expenses', [EcommercePosController::class, 'createExpense'])->middleware('throttle:60,1');
+        Route::get('/expense-categories', [\App\Http\Controllers\Api\EcommerceExpenseCategoryController::class, 'index']);
+        Route::post('/expense-categories', [\App\Http\Controllers\Api\EcommerceExpenseCategoryController::class, 'store'])->middleware('throttle:60,1');
+        Route::patch('/expense-categories/{id}', [\App\Http\Controllers\Api\EcommerceExpenseCategoryController::class, 'update']);
         Route::get('/sales-report', [EcommerceSalesReportController::class, 'index']);
         Route::get('/wallet', [SellerWalletController::class, 'bootstrap']);
         Route::post('/wallet/reconcile', [SellerWalletController::class, 'reconcilePayments'])->middleware('maximus.demo-money');

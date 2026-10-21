@@ -75,6 +75,7 @@ const ecommerceFeatureIcons: Record<string, Icon> = {
   commandes: ShoppingCart,
   'rapport-ventes': FileBarChart,
   depenses: ArrowDownToLine,
+  investissements: WalletCards,
   clients: Users,
   promotions: CreditCard,
   livraisons: Warehouse,
@@ -98,12 +99,14 @@ function buildEcommerceNavigationItems(
   selectedFeatureIds: Set<string>,
   canViewSalesReport: boolean,
   canViewExpenses: boolean,
+  canViewInvestments: boolean,
 ) {
   const featureItems = getModuleFeatureOptions(module)
     .filter(feature => !ecommerceCapabilityFeatureIds.has(feature.id))
     .filter(feature => selectedFeatureIds.has(feature.id))
     .filter(feature => feature.id !== 'rapport-ventes' || canViewSalesReport)
     .filter(feature => feature.id !== 'depenses' || canViewExpenses)
+    .filter(feature => feature.id !== 'investissements' || canViewInvestments)
     .map(feature => ({
       href: `/entreprise/ecommerce?tab=${feature.id}`,
       label: feature.label,
@@ -112,21 +115,21 @@ function buildEcommerceNavigationItems(
 
   // Les catégories font partie de la gestion du catalogue : elles suivent
   // donc son autorisation sans devenir une permission indépendante.
-  if (!selectedFeatureIds.has('catalogue') || featureItems.some(item => item.href.endsWith('?tab=categories'))) {
+  if (!['catalogue', 'depenses', 'investissements'].some(id => selectedFeatureIds.has(id)) || featureItems.some(item => item.href.endsWith('?tab=categories'))) {
     return featureItems;
   }
 
   const catalogueIndex = featureItems.findIndex(item => item.href.endsWith('?tab=catalogue'));
-  if (catalogueIndex < 0) return featureItems;
+  const insertIndex = catalogueIndex >= 0 ? catalogueIndex + 1 : featureItems.length;
 
   return [
-    ...featureItems.slice(0, catalogueIndex + 1),
+    ...featureItems.slice(0, insertIndex),
     {
       href: '/entreprise/ecommerce?tab=categories',
       label: 'Catégories',
       icon: Tags,
     },
-    ...featureItems.slice(catalogueIndex + 1),
+    ...featureItems.slice(insertIndex),
   ];
 }
 
@@ -220,7 +223,9 @@ export function buildSidebarFeatureGroups({
             || roleHasFeaturePermission(employeeRole, employeeNode, ecommerceModule.id, 'rapport-ventes', 'voir');
           const canViewExpenses = (companyAdmin && !employeeRole)
             || roleHasFeaturePermission(employeeRole, employeeNode, ecommerceModule.id, 'depenses', 'voir');
-          items.push(...buildEcommerceNavigationItems(ecommerceModule, features, canViewSalesReport, canViewExpenses));
+          const canViewInvestments = (companyAdmin && !employeeRole)
+            || roleHasFeaturePermission(employeeRole, employeeNode, ecommerceModule.id, 'investissements', 'voir');
+          items.push(...buildEcommerceNavigationItems(ecommerceModule, features, canViewSalesReport, canViewExpenses, canViewInvestments));
         }
       }
 
@@ -246,6 +251,8 @@ export function buildSidebarFeatureGroups({
               || roleHasFeaturePermission(employeeRole, employeeNode, module.id, 'rapport-ventes', 'voir'),
             (companyAdmin && !employeeRole)
               || roleHasFeaturePermission(employeeRole, employeeNode, module.id, 'depenses', 'voir'),
+            (companyAdmin && !employeeRole)
+              || roleHasFeaturePermission(employeeRole, employeeNode, module.id, 'investissements', 'voir'),
           )
         : moduleId === 'presences'
           ? getModuleFeatureOptions(module)

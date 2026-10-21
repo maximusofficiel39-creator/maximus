@@ -47,10 +47,22 @@ export interface EcommercePosExpense {
   id: string;
   type: 'INVESTMENT' | 'PERSONAL';
   description: string;
+  categoryId: string | null;
+  categoryName: string;
   amount: number;
   currency: 'XOF' | 'EUR' | 'USD';
   expenseDate: string;
   createdAt: string;
+}
+
+export interface EcommerceExpenseCategory {
+  id: string;
+  kind: 'EXPENSE' | 'INVESTMENT';
+  name: string;
+  slug: string;
+  description: string;
+  isActive: boolean;
+  sortOrder: number;
 }
 
 export interface EcommercePosSalesBootstrap {
@@ -76,6 +88,8 @@ export interface EcommerceExpenseSummary {
 
 export interface EcommerceExpensesBootstrap {
   currency: 'XOF' | 'EUR' | 'USD';
+  type: EcommercePosExpense['type'];
+  categories: Array<{ id: string; name: string }>;
   expenses: EcommercePosExpense[];
   expenseSummary: EcommerceExpenseSummary;
 }
@@ -631,7 +645,7 @@ export const createEcommerceApi = (companyId: string) => {
   return {
     bootstrap: () => request<EcommerceBootstrap>(withCompany('/ecommerce/bootstrap')),
     posSales: () => request<EcommercePosSalesBootstrap>(withCompany('/ecommerce/pos-sales')),
-    posExpenses: () => request<EcommerceExpensesBootstrap>(withCompany('/ecommerce/pos-expenses')),
+    posExpenses: (type: EcommercePosExpense['type']) => request<EcommerceExpensesBootstrap>(withCompany(`/ecommerce/pos-expenses?type=${type}`)),
     salesReport: (filters: EcommerceSalesReportFilters) => {
       const query = new URLSearchParams({
         dateFrom: filters.dateFrom,
@@ -654,11 +668,17 @@ export const createEcommerceApi = (companyId: string) => {
         headers: { 'Idempotency-Key': idempotencyKey },
       });
     },
-    createPosExpense: (body: { type: EcommercePosExpense['type']; amount: number; description?: string; expenseDate: string }) =>
+    createPosExpense: (body: { type: EcommercePosExpense['type']; amount: number; description?: string; expenseDate: string; categoryId?: string }) =>
       request<{ expense: EcommercePosExpense }>(withCompany('/ecommerce/pos-expenses'), {
         method: 'POST',
         body: JSON.stringify(body),
       }),
+    expenseCategories: (kind: EcommerceExpenseCategory['kind']) =>
+      request<{ categories: EcommerceExpenseCategory[] }>(withCompany(`/ecommerce/expense-categories?kind=${kind}`)),
+    createExpenseCategory: (body: { kind: EcommerceExpenseCategory['kind']; name: string; description?: string; sortOrder?: number }) =>
+      request<{ category: EcommerceExpenseCategory }>(withCompany('/ecommerce/expense-categories'), json(body)),
+    updateExpenseCategory: (id: string, body: Partial<Pick<EcommerceExpenseCategory, 'name' | 'description' | 'isActive' | 'sortOrder'>>) =>
+      request<{ category: EcommerceExpenseCategory }>(withCompany(`/ecommerce/expense-categories/${encodeURIComponent(id)}`), { method: 'PATCH', body: JSON.stringify(body) }),
     wallet: () => request<SellerWalletBootstrap>(withCompany('/ecommerce/wallet')),
     reconcilePayments: () => request<{ sync: { checked: number; updated: number; failed: number }; wallet: SellerWallet }>(withCompany('/ecommerce/wallet/reconcile'), { method: 'POST' }),
     updatePayoutAccount: (body: { provider: 'WAVE'; mobile: string; beneficiaryName: string }) =>

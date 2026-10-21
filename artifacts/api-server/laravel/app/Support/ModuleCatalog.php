@@ -56,12 +56,13 @@ final class ModuleCatalog
                 'id' => 'ecommerce',
                 'name' => 'Boutique en ligne',
                 'description' => 'Boutique en ligne, catalogue public et commandes clients.',
-                'features' => ['Tableau de bord', 'Catalogue', 'Vente physique', 'Vente comptoir', 'Dépenses', 'Vente numérique', 'Catégories', 'Commandes', 'Rapport des ventes', 'Clients', 'Promotions', 'Location', 'Livraisons', 'Finances', 'Paramètres'],
+                'features' => ['Tableau de bord', 'Catalogue', 'Vente physique', 'Vente comptoir', 'Dépenses', 'Investissements', 'Vente numérique', 'Catégories', 'Commandes', 'Rapport des ventes', 'Clients', 'Promotions', 'Location', 'Livraisons', 'Finances', 'Paramètres'],
                 'feature_packs' => [
                     ['id' => 'ecommerce-catalogue', 'name' => 'Catalogue en ligne', 'description' => 'Publier une boutique et présenter vos produits.', 'feature_ids' => ['dashboard', 'catalogue', 'vente-physique', 'categories', 'finances', 'parametres']],
                     ['id' => 'ecommerce-gestion', 'name' => 'Gestion e-commerce', 'description' => 'Piloter le catalogue, les ventes physiques et les clients.', 'feature_ids' => ['dashboard', 'catalogue', 'vente-physique', 'categories', 'commandes', 'clients', 'finances', 'parametres']],
                     ['id' => 'ecommerce-rapport-ventes', 'name' => 'Rapport des ventes', 'description' => 'Consulter les ventes des sources activées pour l’entreprise.', 'feature_ids' => ['rapport-ventes'], 'feature_permissions' => ['rapport-ventes' => ['voir']]],
-                    ['id' => 'ecommerce-depenses', 'name' => 'Dépenses', 'description' => 'Saisir les investissements et dépenses personnelles, séparément du chiffre d’affaires.', 'feature_ids' => ['depenses'], 'feature_permissions' => ['depenses' => ['voir', 'créer']]],
+                    ['id' => 'ecommerce-depenses', 'name' => 'Dépenses', 'description' => 'Saisir les dépenses personnelles séparément du chiffre d’affaires.', 'feature_ids' => ['depenses'], 'feature_permissions' => ['depenses' => ['voir', 'créer', 'modifier']]],
+                    ['id' => 'ecommerce-investissements', 'name' => 'Investissements', 'description' => 'Enregistrer et suivre les investissements avec leurs catégories.', 'feature_ids' => ['investissements'], 'feature_permissions' => ['investissements' => ['voir', 'créer', 'modifier']]],
                     ['id' => 'ecommerce-vente-numerique', 'name' => 'Vente de produits numériques', 'description' => 'Publier des fichiers numériques et les délivrer après paiement.', 'feature_ids' => ['dashboard', 'catalogue', 'vente-numerique', 'categories', 'commandes', 'clients', 'finances', 'parametres']],
                     ['id' => 'ecommerce-vente-complete', 'name' => 'Ventes physiques et numériques', 'description' => 'Vendre des produits physiques et des produits numériques dans la même boutique.', 'feature_ids' => ['dashboard', 'catalogue', 'vente-physique', 'vente-numerique', 'categories', 'commandes', 'clients', 'finances', 'parametres']],
                     ['id' => 'ecommerce-location', 'name' => 'Location & réservation', 'description' => 'Présenter et gérer les offres de location de maisons, bâches, véhicules et équipements.', 'feature_ids' => ['dashboard', 'catalogue', 'vente-physique', 'categories', 'location', 'commandes', 'clients', 'parametres']],
@@ -718,6 +719,7 @@ final class ModuleCatalog
                 'dashboard' => 'Tableau de bord', 'catalogue' => 'Catalogue', 'vente-physique' => 'Vente de produits physiques',
                 'vente-comptoir' => 'Vente comptoir',
                 'depenses' => 'Dépenses',
+                'investissements' => 'Investissements',
                 'rapport-ventes' => 'Rapport des ventes',
                 'vente-numerique' => 'Vente de produits numériques', 'categories' => 'Catégories', 'commandes' => 'Commandes',
                 'clients' => 'Clients', 'promotions' => 'Promotions', 'location' => 'Location', 'livraisons' => 'Livraisons',
@@ -793,7 +795,7 @@ final class ModuleCatalog
             // a feature selection nor a pack was stored in the signup request.
             if ($featureIds === [] && $packIds === []) {
                 return $moduleId !== 'ecommerce'
-                    || ! in_array($featureId, ['vente-numerique', 'vente-comptoir', 'rapport-ventes', 'depenses'], true);
+                    || ! in_array($featureId, ['vente-numerique', 'vente-comptoir', 'rapport-ventes', 'depenses', 'investissements'], true);
             }
 
             try {
@@ -823,7 +825,7 @@ final class ModuleCatalog
         if (($configuration['featureScope'] ?? null) === 'explicit') {
             return in_array($featureId, $featureIds, true);
         }
-        if (in_array($featureId, ['vente-numerique', 'vente-comptoir', 'rapport-ventes', 'depenses'], true)) {
+        if (in_array($featureId, ['vente-numerique', 'vente-comptoir', 'rapport-ventes', 'depenses', 'investissements'], true)) {
             return false;
         }
         if ($featureId === 'vente-physique') {

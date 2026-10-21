@@ -62,6 +62,7 @@ import {
 } from '@/lib/ecommerce-api';
 import EcommercePosPanel from '@/pages/ecommerce-pos-panel';
 import EcommerceExpensesPanel from '@/pages/ecommerce-expenses-panel';
+import { EcommerceExpenseCategoriesPanel } from '@/pages/ecommerce-expense-categories-panel';
 import EcommerceSalesReportPanel from '@/pages/ecommerce-sales-report-panel';
 import { useQueryTab } from '@/lib/query-tab';
 import { isEcommerceTabVisible } from '@/lib/ecommerce-navigation';
@@ -73,7 +74,7 @@ import { buildPublicProductUrl } from '@/lib/ecommerce-product-link';
 import { showAppToast } from '@workspace/maximus-design-system/hooks/use-toast';
 import { useAutoRefresh } from '@/hooks/use-auto-refresh';
 
-type EcommerceTab = 'dashboard' | 'accueil' | 'catalogue' | 'vente-comptoir' | 'depenses' | 'rapport-ventes' | 'categories' | 'commandes' | 'clients' | 'promotions' | 'location' | 'livraisons' | 'finances' | 'parametres';
+type EcommerceTab = 'dashboard' | 'accueil' | 'catalogue' | 'vente-comptoir' | 'depenses' | 'investissements' | 'rapport-ventes' | 'categories' | 'commandes' | 'clients' | 'promotions' | 'location' | 'livraisons' | 'finances' | 'parametres';
 
 const tabs: { id: EcommerceTab; label: string; icon: typeof LayoutDashboard }[] = [
   { id: 'dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
@@ -81,6 +82,7 @@ const tabs: { id: EcommerceTab; label: string; icon: typeof LayoutDashboard }[] 
   { id: 'catalogue', label: 'Catalogue', icon: Package },
   { id: 'vente-comptoir', label: 'Vente comptoir', icon: ShoppingBag },
   { id: 'depenses', label: 'Dépenses', icon: Banknote },
+  { id: 'investissements', label: 'Investissements', icon: CircleDollarSign },
   { id: 'rapport-ventes', label: 'Rapport des ventes', icon: BarChart3 },
   { id: 'categories', label: 'Catégories', icon: Tags },
   { id: 'commandes', label: 'Commandes', icon: ClipboardList },
@@ -287,6 +289,7 @@ export default function EcommerceModulePage({
   const [walletData, setWalletData] = useState<SellerWalletBootstrap | null>(null);
   const [posData, setPosData] = useState<EcommercePosSalesBootstrap | null>(null);
   const [expensesData, setExpensesData] = useState<EcommerceExpensesBootstrap | null>(null);
+  const [investmentsData, setInvestmentsData] = useState<EcommerceExpensesBootstrap | null>(null);
   const reportSources = useMemo<EcommerceSalesReportSource[]>(
     () => preview ? ['ONLINE', 'COUNTER'] : [],
     [preview],
@@ -343,6 +346,15 @@ export default function EcommerceModulePage({
       });
       setExpensesData({
         currency: 'XOF',
+        type: 'PERSONAL',
+        categories: [],
+        expenses: [],
+        expenseSummary: { total: 0, todayTotal: 0, investmentTotal: 0, personalTotal: 0, netToday: 0, netTotal: 0 },
+      });
+      setInvestmentsData({
+        currency: 'XOF',
+        type: 'INVESTMENT',
+        categories: [],
         expenses: [],
         expenseSummary: { total: 0, todayTotal: 0, investmentTotal: 0, personalTotal: 0, netToday: 0, netTotal: 0 },
       });
@@ -352,17 +364,19 @@ export default function EcommerceModulePage({
       return;
     }
     try {
-      const [bootstrap, nextWalletData, nextPosData, nextExpensesData] = await Promise.all([
+      const [bootstrap, nextWalletData, nextPosData, nextExpensesData, nextInvestmentsData] = await Promise.all([
         api.bootstrap(),
         visibleTabIds.includes('finances') ? api.wallet() : Promise.resolve(null),
         visibleTabIds.includes('vente-comptoir') ? api.posSales() : Promise.resolve(null),
-        visibleTabIds.includes('depenses') ? api.posExpenses() : Promise.resolve(null),
+        visibleTabIds.includes('depenses') ? api.posExpenses('PERSONAL') : Promise.resolve(null),
+        visibleTabIds.includes('investissements') ? api.posExpenses('INVESTMENT') : Promise.resolve(null),
       ]);
       const nextData = normalizeEcommerceBootstrap(bootstrap, companyId);
       setData(nextData);
       setWalletData(nextWalletData);
       setPosData(nextPosData);
       setExpensesData(nextExpensesData);
+      setInvestmentsData(nextInvestmentsData);
       setError('');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Impossible de charger l’espace e-commerce.');
@@ -407,6 +421,9 @@ export default function EcommerceModulePage({
   const currentFeaturePermissions = featurePermissions?.[permissionFeatureId];
   const currentCanCreate = Boolean(canCreate && (!featurePermissions || currentFeaturePermissions?.includes('créer')));
   const currentCanModify = Boolean(canModify && currentCanCreate && (!featurePermissions || currentFeaturePermissions?.includes('modifier')));
+  const hasFeatureAccess = (featureId: string, action: string) =>
+    (!allowedFeatureIds || allowedFeatureIds.includes(featureId))
+    && (!featurePermissions || Boolean(featurePermissions[featureId]?.includes(action)));
 
   return (
     <div className="space-y-5" data-testid="ecommerce-module" aria-busy={Boolean(pendingAction)}>
@@ -480,6 +497,18 @@ export default function EcommerceModulePage({
       {tab === 'depenses' && expensesData && (
         <EcommerceExpensesPanel
           data={expensesData}
+          mode="PERSONAL"
+          canCreate={currentCanCreate}
+          onCreateExpense={async input => {
+            await api.createPosExpense(input);
+            await load(true);
+          }}
+        />
+      )}
+      {tab === 'investissements' && investmentsData && (
+        <EcommerceExpensesPanel
+          data={investmentsData}
+          mode="INVESTMENT"
           canCreate={currentCanCreate}
           onCreateExpense={async input => {
             await api.createPosExpense(input);
@@ -495,7 +524,19 @@ export default function EcommerceModulePage({
           preview={preview}
         />
       )}
-      {tab === 'categories' && <CategoryManager data={data} canCreate={currentCanCreate} canModify={currentCanModify} run={run} />}
+      {tab === 'categories' && <CategoryManager
+        data={data}
+        canCreate={currentCanCreate}
+        canModify={currentCanModify}
+        showProductCategories={!allowedFeatureIds || allowedFeatureIds.includes('catalogue')}
+        canViewExpenses={hasFeatureAccess('depenses', 'voir')}
+        canCreateExpenses={Boolean(canCreate && hasFeatureAccess('depenses', 'créer'))}
+        canModifyExpenses={Boolean(canModify && hasFeatureAccess('depenses', 'modifier'))}
+        canViewInvestments={hasFeatureAccess('investissements', 'voir')}
+        canCreateInvestments={Boolean(canCreate && hasFeatureAccess('investissements', 'créer'))}
+        canModifyInvestments={Boolean(canModify && hasFeatureAccess('investissements', 'modifier'))}
+        run={run}
+      />}
       {tab === 'commandes' && <><Orders data={data} canModify={currentCanModify} run={run} /><OrderAttachments data={data} /></>}
       {tab === 'clients' && <Clients data={data} />}
       {tab === 'promotions' && <Promotions />}
@@ -1108,7 +1149,31 @@ function Catalogue({ data, allowedFeatureIds, canCreate, canModify, run }: { dat
   </Modal>;
 }
 
-function CategoryManager({ data, canCreate, canModify, run }: { data: EcommerceBootstrap; canCreate: boolean; canModify: boolean; run: (action: () => Promise<unknown>, success: string) => Promise<unknown | undefined> }) {
+function CategoryManager({
+  data,
+  canCreate,
+  canModify,
+  showProductCategories = true,
+  canViewExpenses,
+  canCreateExpenses,
+  canModifyExpenses,
+  canViewInvestments,
+  canCreateInvestments,
+  canModifyInvestments,
+  run,
+}: {
+  data: EcommerceBootstrap;
+  canCreate: boolean;
+  canModify: boolean;
+  showProductCategories?: boolean;
+  canViewExpenses: boolean;
+  canCreateExpenses: boolean;
+  canModifyExpenses: boolean;
+  canViewInvestments: boolean;
+  canCreateInvestments: boolean;
+  canModifyInvestments: boolean;
+  run: (action: () => Promise<unknown>, success: string) => Promise<unknown | undefined>;
+}) {
   const { confirm } = useAppDialog();
   const [editing, setEditing] = useState<EcommerceCategory | 'new' | null>(null);
   const [form, setForm] = useState({ name: '', slug: '', description: '', isActive: true, sortOrder: 0 });
@@ -1134,9 +1199,11 @@ function CategoryManager({ data, canCreate, canModify, run }: { data: EcommerceB
     await run(() => createEcommerceApi(data.store.companyId).deleteCategory(category.id), 'Catégorie supprimée.');
   };
      return <div className="space-y-5 fade-up">
-    <Panel title="Catégories" description="Structurez le catalogue avec des catégories réutilisables et persistantes." action={canCreate ? <button type="button" onClick={() => open()} className="btn inline-flex items-center gap-2 rounded-lg bg-[hsl(var(--primary))] px-3.5 py-2.5 text-xs font-bold text-[hsl(var(--primary-foreground))]"><Plus size={15} />Ajouter une catégorie</button> : undefined}>
+     {showProductCategories && <Panel title="Catégories de produits" description="Structurez le catalogue avec des catégories réutilisables et persistantes." action={canCreate ? <button type="button" onClick={() => open()} className="btn inline-flex items-center gap-2 rounded-lg bg-[hsl(var(--primary))] px-3.5 py-2.5 text-xs font-bold text-[hsl(var(--primary-foreground))]"><Plus size={15} />Ajouter une catégorie</button> : undefined}>
       {data.categories.length === 0 ? <Empty icon={Tags} title="Aucune catégorie" text="Créez une catégorie pour mieux organiser vos produits." /> : <div className="table-scroll"><table className="w-full text-left text-sm"><thead><tr><th className="px-4">Nom</th><th className="px-4">Slug</th><th className="px-4">Ordre</th><th className="px-4">Statut</th><th className="px-4">Actions</th></tr></thead><tbody className="divide-y">{data.categories.map(category => <tr key={category.id}><td className="px-4 py-3 font-bold">{category.name}</td><td className="mono px-4 py-3 text-xs">{category.slug}</td><td className="px-4 py-3">{category.sortOrder}</td><td className="px-4 py-3">{category.isActive ? 'Active' : 'Inactive'}</td><td className="px-4 py-3"><div className="flex gap-2">{canModify && <button type="button" onClick={() => open(category)} className="rounded-lg border px-2.5 py-2 text-xs font-bold"><Pencil size={13} className="mr-1 inline" />Modifier</button>}{canModify && <button type="button" onClick={() => void remove(category)} className="rounded-lg border px-2.5 py-2 text-xs font-bold text-[hsl(var(--destructive))]">Supprimer</button>}</div></td></tr>)}</tbody></table></div>}
-    </Panel>
+     </Panel>}
+     {canViewExpenses && <EcommerceExpenseCategoriesPanel companyId={data.store.companyId} kind="EXPENSE" canCreate={canCreateExpenses} canModify={canModifyExpenses} />}
+     {canViewInvestments && <EcommerceExpenseCategoriesPanel companyId={data.store.companyId} kind="INVESTMENT" canCreate={canCreateInvestments} canModify={canModifyInvestments} />}
      {editing && <Modal title={editing === 'new' ? 'Nouvelle catégorie' : 'Modifier la catégorie'} onClose={() => setEditing(null)}><form onSubmit={save} className="space-y-4"><Field label="Nom" required value={form.name} onChange={value => setForm({ ...form, name: value, ...(!slugManuallyEdited ? { slug: slugify(value) } : {}) })} placeholder="Ex. Accessoires" /><Field label="Slug" value={form.slug} onChange={value => { setSlugManuallyEdited(true); setForm({ ...form, slug: value }); }} placeholder="généré automatiquement" /><label className="block text-xs font-bold">Description<textarea value={form.description} onChange={event => setForm({ ...form, description: event.target.value })} rows={3} className="mt-1.5 w-full rounded-lg border px-3 py-2.5 text-sm" /></label><div className="grid gap-3 sm:grid-cols-2"><Field label="Ordre" type="number" value={String(form.sortOrder)} onChange={value => setForm({ ...form, sortOrder: Math.max(0, Number(value) || 0) })} /><label className="flex items-center gap-2 rounded-lg border px-3 py-2.5 text-xs font-bold"><input type="checkbox" checked={form.isActive} onChange={event => setForm({ ...form, isActive: event.target.checked })} />Catégorie active</label></div><div className="modal-footer flex justify-end gap-2"><button type="button" onClick={() => setEditing(null)} className="rounded-lg border px-4 py-2.5 text-xs font-bold">Annuler</button><button type="submit" className="rounded-lg bg-[hsl(var(--primary))] px-4 py-2.5 text-xs font-bold text-[hsl(var(--primary-foreground))]">Enregistrer</button></div></form></Modal>}
   </div>;
 }

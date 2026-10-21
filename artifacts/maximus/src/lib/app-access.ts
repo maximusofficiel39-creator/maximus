@@ -156,7 +156,7 @@ export function buildAppAccessContext({
       return module.id === 'ecommerce'
         ? getModuleFeatureOptions(module)
           .map(feature => feature.id)
-          .filter(featureId => !['vente-comptoir', 'rapport-ventes', 'depenses'].includes(featureId))
+          .filter(featureId => !['vente-comptoir', 'rapport-ventes', 'depenses', 'investissements'].includes(featureId))
         : undefined;
     }
 
@@ -197,7 +197,7 @@ export function buildAppAccessContext({
       return module.id === 'ecommerce'
         ? new Set(getModuleFeatureOptions(module)
           .map(feature => feature.id)
-          .filter(featureId => !['vente-comptoir', 'rapport-ventes', 'depenses'].includes(featureId)))
+          .filter(featureId => !['vente-comptoir', 'rapport-ventes', 'depenses', 'investissements'].includes(featureId)))
         : undefined;
     }
     return new Set(getEffectiveModuleFeatureIds(module, requestedFeatures[module.id] ?? []));
