@@ -200,8 +200,6 @@ Route::middleware(['maximus.central', 'maximus.auth'])->prefix('platform-setting
     Route::get('/ecommerce-commission', [PlatformSettingsController::class, 'ecommerceCommission']);
     Route::put('/ecommerce-commission', [PlatformSettingsController::class, 'updateEcommerceCommission']);
     Route::get('/maximus-wallet', [MaximusWalletController::class, 'bootstrap']);
-    Route::get('/maximus-wallet/counter-deposits', [MaximusWalletController::class, 'pendingCounterCashDeposits']);
-    Route::post('/maximus-wallet/counter-deposits/{id}/review', [MaximusWalletController::class, 'reviewCounterCashDeposit']);
     Route::patch('/maximus-wallet/payout-account', [MaximusWalletController::class, 'updatePayoutAccount']);
     Route::post('/maximus-wallet/withdrawals', [MaximusWalletController::class, 'requestWithdrawal'])->middleware('throttle:withdrawals');
     Route::get('/diagnostic-tokens', [DiagnosticTokenController::class, 'index']);

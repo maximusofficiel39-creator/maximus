@@ -914,9 +914,6 @@ function RentalModal({ editing, form, categories, setForm, onClose, onSave, onRe
 function WalletPanel({ data, currency, canModify, run, pendingAction }: { data: SellerWalletBootstrap; currency: EcommerceStore['currency']; canModify: boolean; run: (action: () => Promise<unknown>, success: string, actionKey?: string) => Promise<unknown | undefined>; pendingAction: string }) {
   const [account, setAccount] = useState({ mobile: data.wallet.payoutMobile, beneficiaryName: data.wallet.payoutName });
   const [amount, setAmount] = useState('');
-  const [selectedCashSales, setSelectedCashSales] = useState<string[]>([]);
-  const [depositReference, setDepositReference] = useState('');
-  const [depositNote, setDepositNote] = useState('');
   const [savingAccount, setSavingAccount] = useState(false);
   const api = createEcommerceApi(data.wallet.companyId);
   const available = data.wallet.availableBalance;
@@ -944,39 +941,18 @@ function WalletPanel({ data, currency, canModify, run, pendingAction }: { data: 
     const result = await run(() => api.requestWithdrawal({ amount: requestedAmount, provider: 'WAVE', mobile: account.mobile.trim(), beneficiaryName: account.beneficiaryName.trim() }), 'Demande de retrait envoyée.');
     if (result) setAmount('');
   };
-  const selectedDepositAmount = data.counterCashSales
-    .filter(sale => selectedCashSales.includes(sale.id))
-    .reduce((sum, sale) => sum + sale.amount, 0);
-  const submitCounterDeposit = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!canModify || !selectedCashSales.length || !depositReference.trim()) return;
-    const result = await run(
-      () => api.createCounterCashDeposit({
-        saleIds: selectedCashSales,
-        reference: depositReference.trim(),
-        note: depositNote.trim(),
-      }),
-      'Dépôt soumis à vérification par MAXIMUS.',
-      `counter-deposit-${crypto.randomUUID()}`,
-    );
-    if (result) {
-      setSelectedCashSales([]);
-      setDepositReference('');
-      setDepositNote('');
-    }
-  };
 
   return <div className="space-y-5 fade-up">
     <section className="flex flex-col gap-4 rounded-2xl border border-[hsl(var(--primary)/.22)] bg-[hsl(var(--primary)/.06)] p-5 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <p className="mono text-[10px] font-bold uppercase tracking-[.2em] text-[hsl(var(--primary))]">Contrôle des paiements</p>
-        <h2 className="mt-1 text-lg font-bold">Créditer uniquement les fonds vérifiés</h2>
-        <p className="mt-1 max-w-2xl text-xs leading-5 text-[hsl(var(--muted-foreground))]">Les ventes en ligne sont créditées après confirmation DiamanoPay. Les ventes comptoir en espèces le sont après vérification du dépôt par MAXIMUS.</p>
+        <h2 className="mt-1 text-lg font-bold">Ne comptabiliser que l’argent confirmé</h2>
+        <p className="mt-1 max-w-2xl text-xs leading-5 text-[hsl(var(--muted-foreground))]">Le solde est crédité uniquement après confirmation DiamanoPay. Cette vérification récupère aussi les paiements confirmés dont le webhook n’est pas arrivé.</p>
       </div>
       <button type="button" disabled={!canModify || Boolean(pendingAction)} onClick={() => void run(async () => {
         const result = await api.reconcilePayments();
         return result;
-      }, 'Paiements vérifiés auprès de DiamanoPay.', 'reconcile')} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border bg-[hsl(var(--background))] px-4 py-3 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-50"><RefreshCw size={15} className={pendingAction === 'reconcile' ? 'animate-spin' : ''} />{pendingAction === 'reconcile' ? 'Vérification…' : 'Rapprocher DiamanoPay'}</button>
+      }, 'Paiements vérifiés auprès de DiamanoPay.', 'reconcile')} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border bg-[hsl(var(--background))] px-4 py-3 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-50"><RefreshCw size={15} className={pendingAction === 'reconcile' ? 'animate-spin' : ''} />{pendingAction === 'reconcile' ? 'Vérification…' : 'Vérifier les paiements'}</button>
     </section>
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       <WalletMetric label="Solde disponible" value={money(data.wallet.availableBalance, currency)} detail="Retirable maintenant" icon={Wallet} accent />
@@ -984,34 +960,6 @@ function WalletPanel({ data, currency, canModify, run, pendingAction }: { data: 
       <WalletMetric label="Retraits réservés" value={money(data.wallet.reservedBalance, currency)} detail="En cours de traitement" icon={ArrowDownToLine} />
       <WalletMetric label="Total crédité" value={money(data.wallet.totalCredited, currency)} detail="Ventes confirmées" icon={CircleDollarSign} />
     </div>
-    <Panel title="Déposer les ventes comptoir en espèces" description="Sélectionnez des ventes encaissées et indiquez la référence du transfert réel. MAXIMUS vérifie le dépôt avant tout crédit du portefeuille.">
-      <form onSubmit={submitCounterDeposit} className="space-y-4" data-testid="counter-cash-deposit-form">
-        {data.counterCashSales.length === 0
-          ? <p className="rounded-lg border border-dashed p-4 text-sm text-[hsl(var(--muted-foreground))]">Aucune vente en espèces disponible pour un nouveau dépôt.</p>
-          : <div className="max-h-64 space-y-2 overflow-auto rounded-xl border p-3">
-            {data.counterCashSales.map(sale => <label key={sale.id} className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-[hsl(var(--muted)/.3)]">
-              <input type="checkbox" checked={selectedCashSales.includes(sale.id)} onChange={event => setSelectedCashSales(current => event.target.checked ? [...current, sale.id] : current.filter(id => id !== sale.id))} />
-              <span className="min-w-0 flex-1 text-xs"><strong>{sale.reference}</strong><span className="ml-2 text-[hsl(var(--muted-foreground))]">{dateLabel(sale.createdAt)}</span></span>
-              <strong className="text-xs">{money(sale.amount, sale.currency)}</strong>
-            </label>)}
-          </div>}
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Référence du dépôt" value={depositReference} onChange={setDepositReference} placeholder="Référence Wave ou reçu" />
-          <Field label="Note (facultative)" value={depositNote} onChange={setDepositNote} placeholder="Détail utile pour la vérification" />
-        </div>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm">Montant proposé : <strong>{money(selectedDepositAmount, currency)}</strong></p>
-          <button type="submit" disabled={!canModify || !selectedCashSales.length || !depositReference.trim() || Boolean(pendingAction)} className="rounded-lg bg-[hsl(var(--primary))] px-4 py-3 text-xs font-bold text-[hsl(var(--primary-foreground))] disabled:opacity-50">Soumettre le dépôt</button>
-        </div>
-      </form>
-      <div className="mt-5 space-y-2">
-        <p className="text-xs font-bold">Historique des dépôts</p>
-        {data.counterDeposits.length === 0 ? <p className="text-xs text-[hsl(var(--muted-foreground))]">Aucun dépôt soumis.</p> : data.counterDeposits.map(deposit => <div key={deposit.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3 text-xs">
-          <span><strong>{money(deposit.amount, deposit.currency)}</strong> · {deposit.reference} · {dateLabel(deposit.submittedAt)}</span>
-          <span className="font-bold">{deposit.status === 'APPROVED' ? 'Confirmé' : deposit.status === 'REJECTED' ? `Refusé${deposit.reviewNote ? ` · ${deposit.reviewNote}` : ''}` : 'En vérification MAXIMUS'}</span>
-        </div>)}
-      </div>
-    </Panel>
      <div className="rounded-xl border border-[hsl(var(--primary)/.2)] bg-[hsl(var(--primary)/.06)] px-4 py-3 text-xs leading-5 text-[hsl(var(--muted-foreground))]">
        Règle de maturation active : <strong className="text-[hsl(var(--foreground))]">{data.maturityPolicy.label}</strong>
      </div>

@@ -465,35 +465,12 @@ export interface SellerWalletBootstrap {
   wallet: SellerWallet;
   withdrawals: SellerWithdrawal[];
   ledger: SellerWalletLedgerEntry[];
-  counterCashSales: CounterCashSale[];
-  counterDeposits: CounterCashDeposit[];
   maturityPolicy: SellerWalletMaturityPolicy;
   withdrawalFee: {
     amount: number;
     label: string;
   };
 }
-
-export type CounterCashSale = {
-  id: string;
-  reference: string;
-  amount: number;
-  currency: 'XOF' | 'EUR' | 'USD';
-  createdAt: string;
-};
-
-export type CounterCashDeposit = {
-  id: string;
-  companyId: string;
-  amount: number;
-  currency: 'XOF' | 'EUR' | 'USD';
-  reference: string;
-  note: string;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
-  submittedAt: string;
-  reviewedAt: string | null;
-  reviewNote: string;
-};
 
 export interface PublicImmobilierProperty {
   id: string;
@@ -708,12 +685,6 @@ export const createEcommerceApi = (companyId: string) => {
       request<SellerWallet>(withCompany('/ecommerce/wallet/payout-account'), { method: 'PATCH', body: JSON.stringify(body) }),
     requestWithdrawal: (body: { amount: number; provider?: 'WAVE'; mobile?: string; beneficiaryName?: string; idempotencyKey?: string }) =>
       request<{ withdrawal: SellerWithdrawal }>(withCompany('/ecommerce/wallet/withdrawals'), { method: 'POST', body: JSON.stringify(body), headers: { 'Idempotency-Key': body.idempotencyKey ?? crypto.randomUUID() } }),
-    createCounterCashDeposit: (body: { saleIds: string[]; reference: string; note?: string; idempotencyKey?: string }) =>
-      request<{ deposit: CounterCashDeposit }>(withCompany('/ecommerce/wallet/counter-deposits'), {
-        method: 'POST',
-        body: JSON.stringify(body),
-        headers: { 'Idempotency-Key': body.idempotencyKey ?? crypto.randomUUID() },
-      }),
     updateStore: (body: Partial<Omit<EcommerceStore, 'id' | 'companyId'>>) => request<EcommerceStore>(withCompany('/ecommerce/store'), { method: 'PATCH', body: JSON.stringify(body) }),
     uploadStoreLogo: async (file: File) => {
       const formData = new FormData();
