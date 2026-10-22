@@ -143,12 +143,8 @@ final class MaximusAuth
             : self::ADMIN_SESSION_HOURS * 60;
     }
 
-    public static function refreshCompanySession(Request $request, AuthUser $user): ?string
+    public static function refreshSession(Request $request, AuthUser $user): ?string
     {
-        if ($user->company_id === null) {
-            return null;
-        }
-
         $token = $request->cookie(self::COOKIE);
         if (! $token) {
             return null;

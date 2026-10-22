@@ -447,36 +447,32 @@ class AuthController extends Controller
             return response()->json(['error' => 'Session MAXIMUS absente ou expirée.'], 401);
         }
 
-        if ($user->company_id !== null) {
-            $seenAt = now();
-            try {
-                $token = MaximusAuth::refreshCompanySession($request, $user);
-                if ($token === null) {
-                    return response()->json(['error' => 'Session MAXIMUS absente ou expirée.'], 401);
-                }
-                AuthUser::query()->whereKey($user->id)->update(['last_seen_at' => $seenAt]);
-            } catch (QueryException $exception) {
-                report($exception);
-                return response()->json(['error' => 'Le suivi des connexions n’est pas encore disponible.'], 503);
+        $seenAt = $user->company_id !== null ? now() : null;
+        try {
+            $token = MaximusAuth::refreshSession($request, $user);
+            if ($token === null) {
+                return response()->json(['error' => 'Session MAXIMUS absente ou expirée.'], 401);
             }
-        } else {
-            $seenAt = null;
+            if ($seenAt !== null) {
+                AuthUser::query()->whereKey($user->id)->update(['last_seen_at' => $seenAt]);
+            }
+        } catch (QueryException $exception) {
+            report($exception);
+            return response()->json(['error' => 'Le suivi des connexions n’est pas encore disponible.'], 503);
         }
 
         $response = response()->json(['ok' => true, 'seenAt' => $seenAt]);
-        if ($user->company_id !== null) {
-            $response->withCookie(cookie(
-                MaximusAuth::COOKIE,
-                $token,
-                MaximusAuth::sessionCookieMinutes($user),
-                '/',
-                null,
-                app()->environment('production'),
-                true,
-                false,
-                'lax',
-            ));
-        }
+        $response->withCookie(cookie(
+            MaximusAuth::COOKIE,
+            $token,
+            MaximusAuth::sessionCookieMinutes($user),
+            '/',
+            null,
+            app()->environment('production'),
+            true,
+            false,
+            'lax',
+        ));
 
         return $response;
     }

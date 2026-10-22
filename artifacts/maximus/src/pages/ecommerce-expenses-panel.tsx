@@ -11,11 +11,8 @@ import {
   SelectValue,
 } from '@workspace/maximus-design-system/components/ui/select';
 import type { EcommerceExpensesBootstrap, EcommercePosExpense } from '@/lib/ecommerce-api';
-import { EcommerceExpenseReportPanel } from '@/pages/ecommerce-expense-report-panel';
 
 type EcommerceExpensesPanelProps = {
-  companyId: string;
-  preview?: boolean;
   data: EcommerceExpensesBootstrap;
   mode: 'PERSONAL' | 'INVESTMENT';
   canCreate: boolean;
@@ -38,7 +35,7 @@ const money = (amount: number, currency: EcommerceExpensesBootstrap['currency'])
     maximumFractionDigits: currency === 'XOF' ? 0 : 2,
   }).format(amount)} ${currency}`;
 
-export default function EcommerceExpensesPanel({ companyId, preview = false, data, mode, canCreate, onCreateExpense }: EcommerceExpensesPanelProps) {
+export default function EcommerceExpensesPanel({ data, mode, canCreate, onCreateExpense }: EcommerceExpensesPanelProps) {
   const [type] = useState<EcommercePosExpense['type']>(mode);
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
@@ -81,8 +78,6 @@ export default function EcommerceExpensesPanel({ companyId, preview = false, dat
         <Card className="p-4"><p className="text-xs font-medium text-muted-foreground">Dépenses personnelles</p><p className="mt-2 text-xl font-semibold tabular-nums">{money(summary.personalTotal, data.currency)}</p></Card>
         <Card className="p-4"><p className="text-xs font-medium text-muted-foreground">Solde caisse du jour</p><p className="mt-2 text-xl font-semibold tabular-nums">{money(summary.netToday, data.currency)}</p><p className="mt-1 text-xs text-muted-foreground">CA comptoir − dépenses du jour</p></Card>
       </section>
-
-      <EcommerceExpenseReportPanel companyId={companyId} type={mode} preview={preview} />
 
       {canCreate && <Card>
         <CardHeader className="pb-3">

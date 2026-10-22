@@ -529,7 +529,6 @@ function AppContent() {
     };
   }, [installationRetry]);
   useEffect(() => {
-    if (!localStorage.getItem('maximus-session')) return undefined;
     void authApi
       .session()
       .then(({ user }) => {
@@ -563,10 +562,8 @@ function AppContent() {
         if (!restoredCompanyLoginPath) localStorage.removeItem(companyLoginContextStorageKey);
       })
       .catch(() => {
-        setSession(null);
-        localStorage.removeItem('maximus-session');
-        localStorage.removeItem(companyLoginContextStorageKey);
-        setCompanyLoginReturnPath(null);
+        // A temporary API restart during a deployment must not erase the
+        // browser's session hint. The server remains the source of truth.
       });
   }, []);
   useEffect(() => {
@@ -859,7 +856,7 @@ function AppContent() {
     };
   }, []);
   useEffect(() => {
-    if (!activeCompanyId || !session || session === 'admin' || sectorTestCompanyId) return undefined;
+    if (!session || sectorTestCompanyId) return undefined;
 
     const sendHeartbeat = () => {
       if (document.visibilityState === 'visible') {

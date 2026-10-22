@@ -98,6 +98,7 @@
 - [Synchronisation rôles et comptes](role-auth-permissions-sync.md) — toute modification de rôle doit mettre à jour les permissions du compte authentifié des employés affectés avant confirmation.
 - [Autorisation par fonctionnalité Présences](presence-feature-authorization.md) — une permission détaillée ne doit jamais retomber sur l’action d’une autre fonctionnalité.
 - [Connexion entreprise personnalisée](company-branded-login.md) — le mode marqué mutualisé est facultatif ; la connexion dédiée est intrinsèque et bornée par le serveur.
+- [Reprise des sessions après déploiement](auth-session-recovery.md) — une erreur réseau temporaire ne doit pas effacer l’indice local de session; l’API reste la source de vérité.
 - [Installations isolées](isolated-installations.md) — le mode central reste le défaut ; une installation dédiée est bornée par une entreprise configurée côté serveur et ne crée jamais d’admin global.
 - [Cache Composer Windows](composer-windows-cache.md) — si un fichier Laravel manque malgré Composer, vider le cache Composer puis réinstaller le paquet framework.
 - [Chemin Vite sous Windows](windows-vite-base-path.md) — construire depuis PowerShell natif pour éviter que Git Bash transforme BASE_PATH=/ en chemin Program Files/Git.

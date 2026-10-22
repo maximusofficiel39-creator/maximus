@@ -497,8 +497,6 @@ export default function EcommerceModulePage({
       )}
       {tab === 'depenses' && expensesData && (
         <EcommerceExpensesPanel
-          companyId={companyId}
-          preview={preview}
           data={expensesData}
           mode="PERSONAL"
           canCreate={currentCanCreate}
@@ -510,8 +508,6 @@ export default function EcommerceModulePage({
       )}
       {tab === 'investissements' && investmentsData && (
         <EcommerceExpensesPanel
-          companyId={companyId}
-          preview={preview}
           data={investmentsData}
           mode="INVESTMENT"
           canCreate={currentCanCreate}

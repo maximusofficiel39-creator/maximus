@@ -75,6 +75,21 @@ class MaximusAuthTest extends TestCase
             ->assertOk()
             ->assertJsonPath('companies.0.companyId', 'kora')
             ->assertJsonPath('companies.0.online', true);
+
+        $adminSession = AuthSession::query()
+            ->where('token_hash', MaximusAuth::hashToken($adminToken))
+            ->firstOrFail();
+        $this->travel(7)->hours();
+        $heartbeat = $this->withCredentials()
+            ->withUnencryptedCookie(MaximusAuth::COOKIE, $adminToken)
+            ->postJson('/api/auth/heartbeat')
+            ->assertOk()
+            ->assertJsonPath('ok', true);
+        $this->assertTrue($adminSession->fresh()->expires_at->greaterThan(now()->addHours(7)));
+        $this->assertSame(
+            now()->addHours(8)->timestamp,
+            $heartbeat->getCookie(MaximusAuth::COOKIE, false)->getExpiresTime(),
+        );
     }
 
     public function test_laravel_accepts_the_existing_maximus_scrypt_format(): void
