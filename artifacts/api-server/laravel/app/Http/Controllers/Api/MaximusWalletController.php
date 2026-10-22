@@ -30,6 +30,56 @@ final class MaximusWalletController extends Controller
         return response()->json($this->wallet->bootstrap());
     }
 
+    public function pendingCounterCashDeposits(Request $request): JsonResponse
+    {
+        if (! $this->isMaximusAdmin($request)) {
+            return $this->forbidden();
+        }
+
+        return response()->json(['deposits' => $this->sellerWallet->pendingCounterCashDeposits()]);
+    }
+
+    public function reviewCounterCashDeposit(Request $request, string $id): JsonResponse
+    {
+        if (! $this->isMaximusAdmin($request)) {
+            return $this->forbidden();
+        }
+        $input = Validator::make($request->all(), [
+            'decision' => ['required', 'in:APPROVE,REJECT'],
+            'note' => ['required_if:decision,REJECT', 'nullable', 'string', 'min:3', 'max:500'],
+        ])->validate();
+
+        $actor = $request->attributes->get('authActor', []);
+        try {
+            $deposit = $this->sellerWallet->reviewCounterCashDeposit(
+                $id,
+                $input['decision'] === 'APPROVE',
+                (string) ($input['note'] ?? ''),
+                (string) ($actor['userId'] ?? ''),
+            );
+        } catch (Throwable $error) {
+            return match ($error->getMessage()) {
+                'DEPOSIT_NOT_PENDING' => response()->json(['error' => 'Ce dépôt a déjà été traité ou est introuvable.'], 409),
+                'DEPOSIT_CURRENCY_MISMATCH' => response()->json(['error' => 'La devise du portefeuille ne correspond pas au dépôt.'], 422),
+                default => throw $error,
+            };
+        }
+
+        return response()->json(['deposit' => [
+            'id' => $deposit->id,
+            'companyId' => $deposit->company_id,
+            'amount' => (int) $deposit->amount,
+            'currency' => $deposit->currency,
+            'reference' => $deposit->reference,
+            'status' => $deposit->status,
+            'note' => $deposit->note,
+            'submittedAt' => (string) $deposit->submitted_at,
+            'reviewedAt' => (string) $deposit->reviewed_at,
+            'reviewNote' => $deposit->review_note,
+            'sales' => \Illuminate\Support\Facades\DB::table('ecommerce_pos_wallet_deposit_sales')->where('deposit_id', $deposit->id)->count(),
+        ]]);
+    }
+
     public function updatePayoutAccount(Request $request): JsonResponse
     {
         if (! $this->isMaximusAdmin($request)) {

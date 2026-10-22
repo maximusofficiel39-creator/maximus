@@ -25,6 +25,7 @@ Route::middleware(['maximus.auth', 'maximus.company', 'maximus.subscription', 'm
         Route::get('/sales-report', [EcommerceSalesReportController::class, 'index']);
         Route::get('/wallet', [SellerWalletController::class, 'bootstrap']);
         Route::post('/wallet/reconcile', [SellerWalletController::class, 'reconcilePayments'])->middleware('maximus.demo-money');
+        Route::post('/wallet/counter-deposits', [SellerWalletController::class, 'createCounterCashDeposit'])->middleware(['throttle:withdrawals', 'maximus.demo-money']);
         Route::patch('/wallet/payout-account', [SellerWalletController::class, 'updatePayoutAccount']);
         Route::post('/wallet/withdrawals', [SellerWalletController::class, 'requestWithdrawal'])->middleware(['throttle:withdrawals', 'maximus.demo-money']);
         Route::patch('/store', [EcommerceController::class, 'updateStore']);

@@ -571,6 +571,66 @@ class EcommerceTest extends TestCase
             ->assertJsonPath('summary.todayChangeGiven', 0);
     }
 
+    public function test_counter_cash_is_credited_only_after_maximus_confirms_a_deposit(): void
+    {
+        $this->setEcommerceFeatures(['dashboard', 'catalogue', 'vente-physique', 'vente-comptoir', 'finances']);
+        \App\Support\CompanyPaymentAccess::ensure('kora', 'ACTIF');
+        DB::table('company_payment_settings')->where('company_id', 'kora')->update(['status' => 'ACTIF']);
+        DB::table('ecommerce_products')->insert([
+            'id' => 'deposit-test-product', 'company_id' => 'kora', 'name' => 'Produit dépôt',
+            'slug' => 'produit-depot', 'sku' => 'DEP-001', 'description' => '', 'category' => 'Général',
+            'price' => 1500, 'stock' => 4, 'image_url' => '', 'featured' => false, 'status' => 'PUBLISHED',
+            'product_type' => 'SALE', 'fulfillment_type' => 'PHYSICAL', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $companyActor = $this->asActor();
+        $saleId = $companyActor
+            ->withHeader('Idempotency-Key', 'pos-deposit-sale-01')
+            ->postJson('/api/ecommerce/pos-sales?companyId=kora', [
+                'lines' => [['productId' => 'deposit-test-product', 'quantity' => 2]],
+                'amountReceived' => 4000,
+            ])->assertCreated()->json('sale.id');
+        $companyActor->getJson('/api/ecommerce/wallet?companyId=kora')
+            ->assertOk()
+            ->assertJsonPath('counterCashSales.0.id', $saleId);
+        $deposit = $companyActor
+            ->withHeader('Idempotency-Key', 'counter-deposit-01')
+            ->postJson('/api/ecommerce/wallet/counter-deposits?companyId=kora', [
+                'saleIds' => [$saleId],
+                'reference' => 'WAVE-DEP-0001',
+            ])->assertCreated()->assertJsonPath('deposit.amount', 3000)->json('deposit');
+
+        $this->assertDatabaseCount('seller_wallet_ledger', 0);
+        $companyActor->getJson('/api/ecommerce/wallet?companyId=kora')
+            ->assertOk()
+            ->assertJsonPath('counterCashSales', []);
+        $maximusActor = $this->asActor('maximus_admin');
+        $maximusActor
+            ->getJson('/api/platform-settings/maximus-wallet/counter-deposits')
+            ->assertOk()
+            ->assertJsonPath('deposits.0.id', $deposit['id']);
+        $maximusActor
+            ->postJson('/api/platform-settings/maximus-wallet/counter-deposits/'.$deposit['id'].'/review', [
+                'decision' => 'APPROVE',
+                'note' => 'Transfert reçu et vérifié.',
+            ])
+            ->assertOk()
+            ->assertJsonPath('deposit.status', 'APPROVED');
+        $maximusActor->postJson('/api/platform-settings/maximus-wallet/counter-deposits/'.$deposit['id'].'/review', [
+            'decision' => 'APPROVE',
+        ])->assertStatus(409);
+
+        $this->assertDatabaseHas('seller_wallets', ['company_id' => 'kora', 'available_balance' => 3000, 'total_credited' => 3000]);
+        $this->assertDatabaseHas('seller_wallet_ledger', [
+            'company_id' => 'kora',
+            'type' => 'POS_CASH_DEPOSIT',
+            'amount' => 3000,
+            'reference_id' => $deposit['id'],
+            'idempotency_key' => 'pos-cash-deposit:'.$deposit['id'],
+        ]);
+        $this->assertDatabaseCount('seller_wallet_ledger', 1);
+    }
+
     public function test_ecommerce_requires_a_session_and_company_context(): void
     {
         $this->getJson('/api/ecommerce/bootstrap?companyId=kora')->assertUnauthorized();

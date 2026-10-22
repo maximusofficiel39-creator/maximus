@@ -71,6 +71,20 @@ export type MaximusWalletBootstrap = {
   commissionPolicy: EcommerceCommissionPolicy;
 };
 
+export type PendingCounterCashDeposit = {
+  id: string;
+  companyId: string;
+  amount: number;
+  currency: 'XOF' | 'EUR' | 'USD';
+  reference: string;
+  note: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  submittedAt: string;
+  reviewedAt: string | null;
+  reviewNote: string;
+  sales: number;
+};
+
 export type DiagnosticTokenStatus = 'ACTIVE' | 'EXPIRED' | 'REVOKED';
 
 export type DiagnosticTokenSummary = {
@@ -143,6 +157,13 @@ export const platformSettingsApi = {
       body: JSON.stringify(payload),
     }),
   maximusWallet: () => request<MaximusWalletBootstrap>('/platform-settings/maximus-wallet'),
+  pendingCounterCashDeposits: () =>
+    request<{ deposits: PendingCounterCashDeposit[] }>('/platform-settings/maximus-wallet/counter-deposits'),
+  reviewCounterCashDeposit: (id: string, payload: { decision: 'APPROVE' | 'REJECT'; note?: string }) =>
+    request<{ deposit: PendingCounterCashDeposit }>(`/platform-settings/maximus-wallet/counter-deposits/${encodeURIComponent(id)}/review`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
   updateMaximusPayoutAccount: (payload: { provider: 'WAVE'; mobile: string; beneficiaryName: string }) =>
     request<MaximusWallet>('/platform-settings/maximus-wallet/payout-account', {
       method: 'PATCH',

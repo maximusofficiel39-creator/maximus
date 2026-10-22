@@ -153,7 +153,7 @@ import { useCompanySubscriptionBillingMode } from '@/hooks/use-company-subscript
 import { createEcommerceApi, type EcommerceDomain } from '@/lib/ecommerce-api';
 import { registrationCatalogApi } from '@/lib/registration-catalog-api';
 import { isPublicIntelligentRegistrationEnabled } from '@/lib/registration-policy';
-import { platformSettingsApi, type MaximusWalletBootstrap } from '@/lib/platform-settings-api';
+import { platformSettingsApi, type MaximusWalletBootstrap, type PendingCounterCashDeposit } from '@/lib/platform-settings-api';
 import {
   loadCompanyModuleAccess,
   setCompanyModuleAccess,
@@ -5373,6 +5373,8 @@ function SubscriptionsPage({
 
 function MaximusWalletPanel({ formatAmount }: { formatAmount: (value: number) => string }) {
   const [bootstrap, setBootstrap] = useState<MaximusWalletBootstrap | null>(null);
+  const [pendingCounterDeposits, setPendingCounterDeposits] = useState<PendingCounterCashDeposit[]>([]);
+  const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [amount, setAmount] = useState('');
@@ -5382,8 +5384,12 @@ function MaximusWalletPanel({ formatAmount }: { formatAmount: (value: number) =>
 
   const load = async (preserveForm = false) => {
     try {
-      const response = await platformSettingsApi.maximusWallet();
+      const [response, depositResponse] = await Promise.all([
+        platformSettingsApi.maximusWallet(),
+        platformSettingsApi.pendingCounterCashDeposits(),
+      ]);
       setBootstrap(response);
+      setPendingCounterDeposits(depositResponse.deposits);
       if (!preserveForm) {
         setMobile(response.wallet.payoutMobile);
         setBeneficiaryName(response.wallet.payoutName);
@@ -5392,6 +5398,26 @@ function MaximusWalletPanel({ formatAmount }: { formatAmount: (value: number) =>
       setMessage({ tone: 'error', text: error instanceof Error ? error.message : 'Le solde MAXIMUS est indisponible.' });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const reviewCounterDeposit = async (deposit: PendingCounterCashDeposit, decision: 'APPROVE' | 'REJECT') => {
+    const note = (reviewNotes[deposit.id] ?? '').trim();
+    if (decision === 'REJECT' && note.length < 3) {
+      setMessage({ tone: 'error', text: 'Ajoutez un motif de refus avant de rejeter le dépôt.' });
+      return;
+    }
+    setBusy(true);
+    setMessage(null);
+    try {
+      await platformSettingsApi.reviewCounterCashDeposit(deposit.id, { decision, note });
+      setMessage({ tone: 'success', text: decision === 'APPROVE' ? 'Dépôt vérifié et crédité au portefeuille vendeur.' : 'Dépôt refusé ; les ventes sont à nouveau disponibles pour un autre dépôt.' });
+      setReviewNotes(current => { const next = { ...current }; delete next[deposit.id]; return next; });
+      await load(true);
+    } catch (error) {
+      setMessage({ tone: 'error', text: error instanceof Error ? error.message : 'Le dépôt n’a pas pu être traité.' });
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -5485,6 +5511,29 @@ function MaximusWalletPanel({ formatAmount }: { formatAmount: (value: number) =>
               );
             })}
           </div>
+
+          <section className="rounded-xl border border-[hsl(var(--border))] p-4" data-testid="maximus-counter-deposit-queue">
+            <div className="flex items-center justify-between gap-3">
+              <div><h3 className="text-sm font-bold">Dépôts comptoir à vérifier</h3><p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Le portefeuille vendeur n’est crédité qu’après validation.</p></div>
+              <span className="rounded-full bg-[hsl(var(--muted))] px-2.5 py-1 text-xs font-bold">{pendingCounterDeposits.length}</span>
+            </div>
+            <div className="mt-4 space-y-3">
+              {pendingCounterDeposits.map(deposit => <article key={deposit.id} className="rounded-lg border border-[hsl(var(--border))] p-3">
+                <div className="flex flex-wrap justify-between gap-2 text-sm">
+                  <strong>{deposit.companyId} · {formatAmount(deposit.amount)} {deposit.currency}</strong>
+                  <span className="text-xs text-[hsl(var(--muted-foreground))]">{deposit.sales} vente(s) · {new Date(deposit.submittedAt).toLocaleString('fr-FR')}</span>
+                </div>
+                <p className="mt-1 text-xs">Référence : {deposit.reference}</p>
+                {deposit.note && <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">{deposit.note}</p>}
+                <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                  <input aria-label={`Motif de décision dépôt ${deposit.reference}`} value={reviewNotes[deposit.id] ?? ''} onChange={event => setReviewNotes(current => ({ ...current, [deposit.id]: event.target.value }))} placeholder="Note de vérification ou motif de refus" className="min-w-0 flex-1 rounded-lg border bg-[hsl(var(--background))] px-3 py-2 text-xs" />
+                  <button type="button" disabled={busy} onClick={() => void reviewCounterDeposit(deposit, 'APPROVE')} className="rounded-lg bg-[hsl(var(--primary))] px-3 py-2 text-xs font-bold text-[hsl(var(--primary-foreground))] disabled:opacity-50">Confirmer et créditer</button>
+                  <button type="button" disabled={busy || (reviewNotes[deposit.id] ?? '').trim().length < 3} onClick={() => void reviewCounterDeposit(deposit, 'REJECT')} className="rounded-lg border px-3 py-2 text-xs font-bold disabled:opacity-50">Refuser</button>
+                </div>
+              </article>)}
+              {pendingCounterDeposits.length === 0 && <p className="rounded-lg border border-dashed p-4 text-center text-xs text-[hsl(var(--muted-foreground))]">Aucun dépôt en attente de vérification.</p>}
+            </div>
+          </section>
 
           <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(340px,.8fr)]">
             <div className="rounded-xl border border-[hsl(var(--border))] p-4">

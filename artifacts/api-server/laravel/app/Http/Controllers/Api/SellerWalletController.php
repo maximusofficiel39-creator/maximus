@@ -47,9 +47,163 @@ final class SellerWalletController extends Controller
             'wallet' => $this->walletPayload($wallet),
             'withdrawals' => $this->withdrawals($company),
             'ledger' => $this->ledger($company),
+            'counterCashSales' => $this->eligibleCounterCashSales($company),
+            'counterDeposits' => $this->counterDepositHistory($company),
             'maturityPolicy' => $this->maturityPolicy->payload(),
             'withdrawalFee' => $this->feePolicy->payload(),
         ]);
+    }
+
+    public function createCounterCashDeposit(Request $request): JsonResponse
+    {
+        if (! $this->canModify($request)) {
+            return response()->json(['error' => 'Cette action n’est pas autorisée pour votre rôle.'], 403);
+        }
+        $company = $this->company($request);
+        if (! CompanyPaymentAccess::isEnabled($company)) {
+            return response()->json(['error' => 'Les systèmes de paiement de cette entreprise sont désactivés.'], 403);
+        }
+        $input = Validator::make($request->all(), [
+            'saleIds' => ['required', 'array', 'min:1', 'max:100'],
+            'saleIds.*' => ['required', 'string', 'max:255', 'distinct'],
+            'reference' => ['required', 'string', 'min:3', 'max:120'],
+            'note' => ['nullable', 'string', 'max:500'],
+        ])->validate();
+        $idempotencyKey = trim((string) $request->header('Idempotency-Key', ''));
+        if ($idempotencyKey === '' || strlen($idempotencyKey) > 120) {
+            return response()->json(['error' => 'Une clé d’idempotence valide est requise.'], 422);
+        }
+        $saleIds = array_values(array_unique($input['saleIds']));
+        sort($saleIds);
+        try {
+            $deposit = DB::transaction(function () use ($request, $company, $input, $idempotencyKey, $saleIds): object {
+                $existing = DB::table('ecommerce_pos_wallet_deposits')
+                    ->where('company_id', $company)
+                    ->where('idempotency_key', $idempotencyKey)
+                    ->first();
+                if ($existing) {
+                    $existingIds = DB::table('ecommerce_pos_wallet_deposit_sales')
+                        ->where('deposit_id', $existing->id)->orderBy('sale_id')->pluck('sale_id')->all();
+                    if ($existingIds !== $saleIds) {
+                        throw new \RuntimeException('DEPOSIT_IDEMPOTENCY_CONFLICT');
+                    }
+
+                    return $existing;
+                }
+                $sales = DB::table('ecommerce_pos_sales')
+                    ->where('company_id', $company)
+                    ->whereIn('id', $saleIds)
+                    ->where('status', 'PAID')
+                    ->where('payment_method', 'CASH')
+                    ->orderBy('id')
+                    ->lockForUpdate()
+                    ->get();
+                if ($sales->count() !== count($saleIds)) {
+                    throw new \RuntimeException('COUNTER_SALE_NOT_ELIGIBLE');
+                }
+                $reservedIds = DB::table('ecommerce_pos_wallet_deposit_sales as links')
+                    ->join('ecommerce_pos_wallet_deposits as deposits', 'deposits.id', '=', 'links.deposit_id')
+                    ->where('links.company_id', $company)
+                    ->whereIn('links.sale_id', $saleIds)
+                    ->whereIn('deposits.status', ['PENDING', 'APPROVED'])
+                    ->pluck('links.sale_id')->all();
+                if ($reservedIds !== []) {
+                    throw new \RuntimeException('COUNTER_SALE_ALREADY_DEPOSITED');
+                }
+                $currency = (string) ($sales->first()->currency ?? 'XOF');
+                if ($sales->contains(fn (object $sale): bool => (string) $sale->currency !== $currency)) {
+                    throw new \RuntimeException('MIXED_DEPOSIT_CURRENCY');
+                }
+                if ((string) $this->wallet($company)->currency !== $currency) {
+                    throw new \RuntimeException('DEPOSIT_CURRENCY_MISMATCH');
+                }
+                $amount = (int) $sales->sum('total');
+                $actor = $request->attributes->get('authActor', []);
+                $id = (string) Str::uuid();
+                $now = now();
+                DB::table('ecommerce_pos_wallet_deposits')->insert([
+                    'id' => $id, 'company_id' => $company, 'amount' => $amount, 'currency' => $currency,
+                    'reference' => trim($input['reference']), 'note' => trim((string) ($input['note'] ?? '')),
+                    'status' => 'PENDING', 'idempotency_key' => $idempotencyKey,
+                    'submitted_by' => is_array($actor) ? ($actor['userId'] ?? null) : null,
+                    'submitted_at' => $now, 'reviewed_by' => null, 'reviewed_at' => null, 'review_note' => '',
+                    'created_at' => $now, 'updated_at' => $now,
+                ]);
+                foreach ($sales as $sale) {
+                    DB::table('ecommerce_pos_wallet_deposit_sales')->insert([
+                        'id' => (string) Str::uuid(), 'company_id' => $company, 'deposit_id' => $id,
+                        'sale_id' => $sale->id, 'amount' => (int) $sale->total, 'created_at' => $now, 'updated_at' => $now,
+                    ]);
+                }
+
+                return DB::table('ecommerce_pos_wallet_deposits')->where('id', $id)->first();
+            });
+        } catch (\RuntimeException $error) {
+            return match ($error->getMessage()) {
+                'DEPOSIT_IDEMPOTENCY_CONFLICT' => response()->json(['error' => 'Cette clé a déjà été utilisée pour un autre dépôt.'], 409),
+                'COUNTER_SALE_ALREADY_DEPOSITED' => response()->json(['error' => 'Une ou plusieurs ventes sont déjà dans un dépôt en attente ou confirmé.'], 409),
+                'MIXED_DEPOSIT_CURRENCY' => response()->json(['error' => 'Un dépôt ne peut contenir qu’une seule devise.'], 422),
+                'DEPOSIT_CURRENCY_MISMATCH' => response()->json(['error' => 'La devise des ventes ne correspond pas à celle du portefeuille.'], 422),
+                default => response()->json(['error' => 'Une ou plusieurs ventes ne sont pas éligibles au dépôt.'], 422),
+            };
+        }
+
+        return response()->json(['deposit' => $this->counterDepositPayload($deposit)], 201);
+    }
+
+    public function reviewCounterCashDeposit(string $id, bool $approve, string $reviewNote, string $reviewer): object
+    {
+        return DB::transaction(function () use ($id, $approve, $reviewNote, $reviewer): object {
+            $deposit = DB::table('ecommerce_pos_wallet_deposits')->where('id', $id)->lockForUpdate()->first();
+            if (! $deposit || $deposit->status !== 'PENDING') {
+                throw new \RuntimeException('DEPOSIT_NOT_PENDING');
+            }
+            if ($approve) {
+                $wallet = $this->wallet((string) $deposit->company_id);
+                if ((string) $wallet->currency !== (string) $deposit->currency) {
+                    throw new \RuntimeException('DEPOSIT_CURRENCY_MISMATCH');
+                }
+                $creditKey = 'pos-cash-deposit:'.$deposit->id;
+                if (! DB::table('seller_wallet_ledger')
+                    ->where('company_id', $deposit->company_id)
+                    ->where('idempotency_key', $creditKey)
+                    ->exists()) {
+                    DB::table('seller_wallets')->where('id', $wallet->id)->update([
+                        'available_balance' => DB::raw('available_balance + '.(int) $deposit->amount),
+                        'total_credited' => DB::raw('total_credited + '.(int) $deposit->amount),
+                        'updated_at' => now(),
+                    ]);
+                    $this->ledgerInsert(
+                        $wallet, 'POS_CASH_DEPOSIT', 'AVAILABLE', 'CREDIT', (int) $deposit->amount,
+                        (string) $deposit->id, $creditKey, now(),
+                        ['depositReference' => $deposit->reference],
+                        'POS_CASH_DEPOSIT',
+                    );
+                }
+            }
+            DB::table('ecommerce_pos_wallet_deposits')->where('id', $id)->update([
+                'status' => $approve ? 'APPROVED' : 'REJECTED',
+                'reviewed_by' => $reviewer,
+                'reviewed_at' => now(),
+                'review_note' => trim($reviewNote),
+                'updated_at' => now(),
+            ]);
+
+            return DB::table('ecommerce_pos_wallet_deposits')->where('id', $id)->first();
+        });
+    }
+
+    public function pendingCounterCashDeposits(): array
+    {
+        return DB::table('ecommerce_pos_wallet_deposits')
+            ->where('status', 'PENDING')
+            ->orderBy('submitted_at')
+            ->limit(200)
+            ->get()
+            ->map(fn (object $row): array => [
+                ...$this->counterDepositPayload($row),
+                'sales' => DB::table('ecommerce_pos_wallet_deposit_sales')->where('deposit_id', $row->id)->count(),
+            ])->all();
     }
 
     public function updatePayoutAccount(Request $request): JsonResponse
@@ -812,7 +966,7 @@ final class SellerWalletController extends Controller
         $this->ledgerInsert($wallet, 'WITHDRAWAL_RELEASED', 'AVAILABLE', 'CREDIT', $totalDebit, $withdrawal->id, 'withdrawal:'.$withdrawal->id.':available');
     }
 
-    private function ledgerInsert(object $wallet, string $type, string $bucket, string $direction, int $amount, string $referenceId, string $idempotencyKey, mixed $availableAt = null, ?array $metadata = null): void
+    private function ledgerInsert(object $wallet, string $type, string $bucket, string $direction, int $amount, string $referenceId, string $idempotencyKey, mixed $availableAt = null, ?array $metadata = null, ?string $referenceType = null): void
     {
         if (DB::table('seller_wallet_ledger')->where('company_id', $wallet->company_id)->where('idempotency_key', $idempotencyKey)->exists()) {
             return;
@@ -825,7 +979,7 @@ final class SellerWalletController extends Controller
             'bucket' => $bucket,
             'direction' => $direction,
             'amount' => $amount,
-            'reference_type' => str_starts_with($type, 'SALE_') ? 'ORDER' : 'WITHDRAWAL',
+            'reference_type' => $referenceType ?? (str_starts_with($type, 'SALE_') ? 'ORDER' : 'WITHDRAWAL'),
             'reference_id' => $referenceId,
             'idempotency_key' => $idempotencyKey,
             'available_at' => $availableAt,
@@ -920,6 +1074,62 @@ final class SellerWalletController extends Controller
             'reversedAt' => $row->reversed_at,
             'createdAt' => $row->created_at,
         ])->all();
+    }
+
+    private function eligibleCounterCashSales(string $company): array
+    {
+        $walletCurrency = (string) $this->wallet($company)->currency;
+
+        return DB::table('ecommerce_pos_sales as sales')
+            ->where('sales.company_id', $company)
+            ->where('sales.status', 'PAID')
+            ->where('sales.payment_method', 'CASH')
+            ->where('sales.currency', $walletCurrency)
+            ->whereNotExists(function ($query): void {
+                $query->selectRaw('1')
+                    ->from('ecommerce_pos_wallet_deposit_sales as links')
+                    ->join('ecommerce_pos_wallet_deposits as deposits', 'deposits.id', '=', 'links.deposit_id')
+                    ->whereColumn('links.sale_id', 'sales.id')
+                    ->whereColumn('links.company_id', 'sales.company_id')
+                    ->whereIn('deposits.status', ['PENDING', 'APPROVED']);
+            })
+            ->orderByDesc('sales.created_at')
+            ->limit(100)
+            ->get(['sales.id', 'sales.reference', 'sales.total', 'sales.currency', 'sales.created_at'])
+            ->map(fn (object $sale): array => [
+                'id' => (string) $sale->id,
+                'reference' => (string) $sale->reference,
+                'amount' => (int) $sale->total,
+                'currency' => (string) $sale->currency,
+                'createdAt' => (string) $sale->created_at,
+            ])->all();
+    }
+
+    private function counterDepositHistory(string $company): array
+    {
+        return DB::table('ecommerce_pos_wallet_deposits')
+            ->where('company_id', $company)
+            ->orderByDesc('submitted_at')
+            ->limit(50)
+            ->get()
+            ->map(fn (object $row): array => $this->counterDepositPayload($row))
+            ->all();
+    }
+
+    private function counterDepositPayload(object $row): array
+    {
+        return [
+            'id' => (string) $row->id,
+            'companyId' => (string) $row->company_id,
+            'amount' => (int) $row->amount,
+            'currency' => (string) $row->currency,
+            'reference' => (string) $row->reference,
+            'note' => (string) $row->note,
+            'status' => (string) $row->status,
+            'submittedAt' => (string) $row->submitted_at,
+            'reviewedAt' => $row->reviewed_at ? (string) $row->reviewed_at : null,
+            'reviewNote' => (string) $row->review_note,
+        ];
     }
 
     private function canView(Request $request): bool
