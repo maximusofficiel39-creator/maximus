@@ -94,6 +94,14 @@ export interface EcommerceExpensesBootstrap {
   expenseSummary: EcommerceExpenseSummary;
 }
 
+export interface EcommerceExpenseReport {
+  type: EcommercePosExpense['type'];
+  filters: { dateFrom: string; dateTo: string };
+  summaryByCurrency: Array<{ currency: string; total: number; transactionCount: number }>;
+  categories: Array<{ categoryName: string; currency: string; total: number; transactionCount: number }>;
+  months: Array<{ month: string; currency: string; total: number; transactionCount: number }>;
+}
+
 export type EcommerceSalesReportSource = 'ONLINE' | 'COUNTER';
 export type EcommerceSalesReportSourceFilter = 'ALL' | EcommerceSalesReportSource;
 
@@ -646,6 +654,14 @@ export const createEcommerceApi = (companyId: string) => {
     bootstrap: () => request<EcommerceBootstrap>(withCompany('/ecommerce/bootstrap')),
     posSales: () => request<EcommercePosSalesBootstrap>(withCompany('/ecommerce/pos-sales')),
     posExpenses: (type: EcommercePosExpense['type']) => request<EcommerceExpensesBootstrap>(withCompany(`/ecommerce/pos-expenses?type=${type}`)),
+    expenseReport: (filters: { type: EcommercePosExpense['type']; dateFrom: string; dateTo: string }) => {
+      const query = new URLSearchParams(filters);
+      return request<EcommerceExpenseReport>(
+        withCompany(`/ecommerce/expense-report?${query.toString()}`),
+        undefined,
+        { cacheTtlMs: 0 },
+      );
+    },
     salesReport: (filters: EcommerceSalesReportFilters) => {
       const query = new URLSearchParams({
         dateFrom: filters.dateFrom,

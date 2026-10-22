@@ -195,6 +195,90 @@ final class EcommercePosController extends Controller
         ]);
     }
 
+    public function expenseReport(Request $request): JsonResponse
+    {
+        $type = strtoupper(trim((string) $request->query('type', '')));
+        $filters = Validator::make([
+            'type' => $type,
+            'dateFrom' => $request->query('dateFrom'),
+            'dateTo' => $request->query('dateTo'),
+        ], [
+            'type' => ['required', 'in:INVESTMENT,PERSONAL'],
+            'dateFrom' => ['required', 'date_format:Y-m-d'],
+            'dateTo' => ['required', 'date_format:Y-m-d', 'after_or_equal:dateFrom'],
+        ])->validate();
+        if (strtotime($filters['dateTo']) - strtotime($filters['dateFrom']) > 5 * 366 * 86400) {
+            return response()->json(['error' => 'La période du rapport ne peut pas dépasser cinq ans.'], 422);
+        }
+        if ($denied = $this->authorizeExpenses($request, 'view', $type)) {
+            return $denied;
+        }
+
+        $companyId = (string) $request->attributes->get('companyId');
+        if ($companyId === '') {
+            return response()->json(['error' => 'Entreprise requise.'], 400);
+        }
+        $baseQuery = fn () => DB::table('ecommerce_pos_expenses')
+            ->where('ecommerce_pos_expenses.company_id', $companyId)
+            ->where('ecommerce_pos_expenses.type', $type)
+            ->whereBetween('ecommerce_pos_expenses.expense_date', [$filters['dateFrom'], $filters['dateTo']]);
+        $categoryKind = $type === 'INVESTMENT' ? 'INVESTMENT' : 'EXPENSE';
+        $categories = $baseQuery()
+            ->leftJoin('ecommerce_expense_categories', function ($join) use ($companyId, $categoryKind): void {
+                $join->on('ecommerce_expense_categories.id', '=', 'ecommerce_pos_expenses.category_id')
+                    ->where('ecommerce_expense_categories.company_id', '=', $companyId)
+                    ->where('ecommerce_expense_categories.kind', '=', $categoryKind);
+            })
+            ->selectRaw("COALESCE(NULLIF(ecommerce_expense_categories.name, ''), 'Sans catégorie') AS category_name")
+            ->selectRaw('ecommerce_pos_expenses.currency AS currency')
+            ->selectRaw('COUNT(*) AS transaction_count')
+            ->selectRaw('COALESCE(SUM(ecommerce_pos_expenses.amount), 0) AS total')
+            ->groupBy('ecommerce_expense_categories.name', 'ecommerce_pos_expenses.currency')
+            ->orderByDesc('total')
+            ->get();
+        $driver = DB::connection()->getDriverName();
+        $monthExpression = $driver === 'pgsql'
+            ? "to_char(ecommerce_pos_expenses.expense_date, 'YYYY-MM')"
+            : "strftime('%Y-%m', ecommerce_pos_expenses.expense_date)";
+        $months = $baseQuery()
+            ->selectRaw("$monthExpression AS month")
+            ->selectRaw('ecommerce_pos_expenses.currency AS currency')
+            ->selectRaw('COUNT(*) AS transaction_count')
+            ->selectRaw('COALESCE(SUM(ecommerce_pos_expenses.amount), 0) AS total')
+            ->groupByRaw("$monthExpression, ecommerce_pos_expenses.currency")
+            ->orderBy('month')
+            ->get();
+        $summary = $baseQuery()
+            ->selectRaw('ecommerce_pos_expenses.currency AS currency')
+            ->selectRaw('COUNT(*) AS transaction_count')
+            ->selectRaw('COALESCE(SUM(ecommerce_pos_expenses.amount), 0) AS total')
+            ->groupBy('ecommerce_pos_expenses.currency')
+            ->orderBy('ecommerce_pos_expenses.currency')
+            ->get();
+
+        return response()->json([
+            'type' => $type,
+            'filters' => ['dateFrom' => $filters['dateFrom'], 'dateTo' => $filters['dateTo']],
+            'summaryByCurrency' => $summary->map(fn (object $row): array => [
+                'currency' => (string) $row->currency,
+                'total' => (int) $row->total,
+                'transactionCount' => (int) $row->transaction_count,
+            ])->values(),
+            'categories' => $categories->map(fn (object $row): array => [
+                'categoryName' => (string) $row->category_name,
+                'currency' => (string) $row->currency,
+                'total' => (int) $row->total,
+                'transactionCount' => (int) $row->transaction_count,
+            ])->values(),
+            'months' => $months->map(fn (object $row): array => [
+                'month' => (string) $row->month,
+                'currency' => (string) $row->currency,
+                'total' => (int) $row->total,
+                'transactionCount' => (int) $row->transaction_count,
+            ])->values(),
+        ]);
+    }
+
     private function expense(object $row): array
     {
         return [

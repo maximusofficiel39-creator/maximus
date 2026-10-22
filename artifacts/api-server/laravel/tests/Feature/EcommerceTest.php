@@ -679,9 +679,21 @@ class EcommerceTest extends TestCase
             'amount' => 25000,
             'expenseDate' => now()->toDateString(),
         ])->assertCreated()->assertJsonPath('expense.categoryName', 'Équipement');
+        $period = ['dateFrom' => now()->startOfMonth()->toDateString(), 'dateTo' => now()->toDateString()];
+        $request->getJson('/api/ecommerce/expense-report?companyId=kora&type=PERSONAL&'.http_build_query($period))
+            ->assertOk()
+            ->assertJsonPath('summaryByCurrency.0.total', 1200)
+            ->assertJsonPath('categories.0.categoryName', 'Transport')
+            ->assertJsonPath('months.0.month', now()->format('Y-m'));
+        $request->getJson('/api/ecommerce/expense-report?companyId=kora&type=INVESTMENT&'.http_build_query($period))
+            ->assertOk()
+            ->assertJsonPath('summaryByCurrency.0.total', 25000)
+            ->assertJsonPath('categories.0.categoryName', 'Équipement');
 
         $this->setEcommerceFeatures(['dashboard', 'depenses']);
         $request->getJson('/api/ecommerce/expense-categories?companyId=kora&kind=INVESTMENT')
+            ->assertForbidden();
+        $request->getJson('/api/ecommerce/expense-report?companyId=kora&type=INVESTMENT&'.http_build_query($period))
             ->assertForbidden();
         $request->postJson('/api/ecommerce/expense-categories?companyId=kora', [
             'kind' => 'INVESTMENT',
