@@ -57,6 +57,7 @@ Route::middleware(['maximus.auth', 'maximus.company', 'maximus.subscription', 'm
          Route::get('/location/reservations', [CarRentalController::class, 'reservations']);
           Route::patch('/location/reservations/{id}/status', [CarRentalController::class, 'transition']);
          Route::get('/location/reservations/{id}/invoice', [CarRentalController::class, 'invoice']);
+        Route::post('/orders', [EcommerceController::class, 'createCompanyOrder'])->middleware('throttle:60,1');
         Route::patch('/orders/{id}/status', [EcommerceController::class, 'updateOrderStatus']);
          Route::get('/orders/{id}/attachments/{attachmentId}', [EcommerceController::class, 'downloadOrderAttachment']);
         Route::get('/delivery-requests', [EcommerceController::class, 'deliveryRequests']);

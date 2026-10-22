@@ -8,7 +8,7 @@ export const ecommerceFeatureDefinitions = [
   { id: 'vente-numerique', label: 'Vente de produits numériques' },
   { id: 'categories', label: 'Catégories' },
   { id: 'commandes', label: 'Commandes' },
-  { id: 'rapport-ventes', label: 'Rapport des ventes' },
+  { id: 'rapport-ventes', label: 'Rapport' },
   { id: 'clients', label: 'Clients' },
   { id: 'promotions', label: 'Promotions' },
   { id: 'location', label: 'Location' },
@@ -51,7 +51,7 @@ export const ecommerceFeaturePacks = [
       dashboard: ['voir'],
       catalogue: ['voir', 'créer', 'modifier'],
       categories: ['voir', 'créer', 'modifier'],
-      commandes: ['voir', 'modifier'],
+      commandes: ['voir', 'créer', 'modifier'],
       clients: ['voir'],
       finances: ['voir', 'modifier'],
       parametres: ['voir', 'modifier'],
@@ -59,8 +59,8 @@ export const ecommerceFeaturePacks = [
   },
   {
     id: 'ecommerce-rapport-ventes',
-    name: 'Rapport des ventes',
-    description: 'Consulter les ventes des sources activées pour l’entreprise.',
+    name: 'Rapport',
+    description: 'Consulter les ventes, dépenses et investissements autorisés pour l’entreprise.',
     featureIds: ['rapport-ventes'],
     featurePermissions: {
       'rapport-ventes': ['voir'],

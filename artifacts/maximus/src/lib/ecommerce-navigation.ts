@@ -3,7 +3,15 @@ export function isEcommerceTabVisible(
   allowedFeatureIds?: string[],
   featurePermissions?: Partial<Record<string, string[]>>,
 ): boolean {
-  if (['rapport-ventes', 'depenses', 'investissements'].includes(tabId) && featurePermissions && !featurePermissions[tabId]?.includes('voir')) {
+  if (tabId === 'rapport-ventes') {
+    const reportFeatures = ['rapport-ventes', 'depenses', 'investissements'];
+    const hasAllowedReport = reportFeatures.some(id =>
+      (!allowedFeatureIds || allowedFeatureIds.includes(id))
+      && (!featurePermissions || featurePermissions[id]?.includes('voir')),
+    );
+    if (!hasAllowedReport) return false;
+    return true;
+  } else if (['depenses', 'investissements'].includes(tabId) && featurePermissions && !featurePermissions[tabId]?.includes('voir')) {
     return false;
   }
   if (!allowedFeatureIds) return true;

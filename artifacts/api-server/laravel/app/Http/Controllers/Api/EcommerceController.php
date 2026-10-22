@@ -28,6 +28,7 @@ class EcommerceController extends Controller
     }
 
     private const STATUSES = ['DRAFT', 'PUBLISHED', 'ARCHIVED'];
+    private const MANUAL_ORDER_NOTE_MARKER = '[MAXIMUS-MANUAL-ORDER]';
     private const ORDER_STATUSES = ['NOUVELLE', 'CONFIRMÉE', 'EN PRÉPARATION', 'EXPÉDIÉE', 'LIVRÉE', 'ANNULÉE'];
     private const PRODUCT_TYPES = ['SALE', 'RENTAL'];
     private const RENTAL_PERIODS = ['JOUR', 'SEMAINE', 'MOIS'];
@@ -978,13 +979,130 @@ class EcommerceController extends Controller
                     $wallet->reverseOrderFunds($updated);
                     DB::table('ecommerce_orders')->where('id', $id)->update(['payment_status' => 'REFUNDED', 'updated_at' => now()]);
                 }
-                if (in_array($updated->payment_status, ['PENDING', 'FAILED'], true)) {
+                if (in_array($updated->payment_status, ['PENDING', 'FAILED'], true)
+                    || (str_starts_with((string) ($updated->note ?? ''), self::MANUAL_ORDER_NOTE_MARKER)
+                        && ($updated->payment_status ?? 'UNPAID') === 'UNPAID')) {
                     $wallet->restoreOrderStock($updated);
                 }
             }
         });
 
         return response()->json($this->order(DB::table('ecommerce_orders')->where('id', $id)->first()));
+    }
+
+    public function createCompanyOrder(Request $request): JsonResponse
+    {
+        if (! $this->allowed($request, 'create', 'commandes')) {
+            return $this->forbidden();
+        }
+
+        $input = Validator::make($request->all(), [
+            'customerName' => ['required', 'string', 'min:2', 'max:120'],
+            'customerEmail' => ['nullable', 'email', 'max:160'],
+            'customerPhone' => ['nullable', 'string', 'max:40'],
+            'shippingAddress' => ['nullable', 'string', 'max:500'],
+            'note' => ['nullable', 'string', 'max:500'],
+            'items' => ['required', 'array', 'min:1', 'max:50'],
+            'items.*.productId' => ['required', 'string', 'max:160'],
+            'items.*.quantity' => ['required', 'integer', 'min:1', 'max:100'],
+        ])->validate();
+        $company = $this->company($request);
+        $store = $this->ensureStore($company);
+
+        $quantities = [];
+        foreach ($input['items'] as $line) {
+            $productId = (string) $line['productId'];
+            $quantities[$productId] = ($quantities[$productId] ?? 0) + (int) $line['quantity'];
+            if ($quantities[$productId] > 100) {
+                return response()->json(['error' => 'La quantité maximale par produit est de 100.'], 422);
+            }
+        }
+
+        $orderId = $this->id('order');
+        try {
+            $created = DB::transaction(function () use ($company, $store, $input, $quantities, $orderId): object {
+                $items = [];
+                $total = 0;
+                foreach ($quantities as $productId => $quantity) {
+                    $product = DB::table('ecommerce_products')
+                        ->where('company_id', $company)
+                        ->where('id', $productId)
+                        ->where('status', 'PUBLISHED')
+                        ->where('product_type', 'SALE')
+                        ->lockForUpdate()
+                        ->first();
+                    if (! $product) {
+                        throw new \RuntimeException('ORDER_PRODUCT_UNAVAILABLE');
+                    }
+                    $fulfillment = $product->fulfillment_type ?? 'PHYSICAL';
+                    if ($fulfillment === 'PHYSICAL' && (int) $product->stock < $quantity) {
+                        throw new \RuntimeException('ORDER_STOCK_INSUFFICIENT');
+                    }
+                    if ($fulfillment === 'DIGITAL' && empty($product->digital_file_path)) {
+                        throw new \RuntimeException('ORDER_DIGITAL_FILE_MISSING');
+                    }
+                    $lineTotal = (int) $product->price * $quantity;
+                    if ($lineTotal < 1 || $total > 2147483647 - $lineTotal) {
+                        throw new \RuntimeException('ORDER_TOTAL_INVALID');
+                    }
+                    $total += $lineTotal;
+                    $items[] = [
+                        'id' => $this->id('item'),
+                        'order_id' => $orderId,
+                        'product_id' => $product->id,
+                        'product_name' => $product->name,
+                        'unit_price' => (int) $product->price,
+                        'quantity' => $quantity,
+                        'line_total' => $lineTotal,
+                        'product_type' => 'SALE',
+                        'rental_period' => null,
+                        'fulfillment_type' => $fulfillment,
+                        'digital_file_name' => $product->digital_file_name ?? null,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ];
+                    if ($fulfillment === 'PHYSICAL') {
+                        DB::table('ecommerce_products')->where('id', $product->id)->update([
+                            'stock' => (int) $product->stock - $quantity,
+                            'updated_at' => now(),
+                        ]);
+                    }
+                }
+
+                $reference = 'CMD-'.strtoupper(Str::substr(str_replace('-', '', $orderId), -8));
+                DB::table('ecommerce_orders')->insert([
+                    'id' => $orderId,
+                    'company_id' => $company,
+                    'customer_id' => null,
+                    'reference' => $reference,
+                    'customer_name' => trim($input['customerName']),
+                    'customer_email' => trim((string) ($input['customerEmail'] ?? '')),
+                    'customer_phone' => trim((string) ($input['customerPhone'] ?? '')),
+                    'shipping_address' => trim((string) ($input['shippingAddress'] ?? '')),
+                    'note' => self::MANUAL_ORDER_NOTE_MARKER."\n".trim((string) ($input['note'] ?? '')),
+                    'total' => $total,
+                    'currency' => $store->currency ?? 'XOF',
+                    'status' => 'NOUVELLE',
+                    'payment_status' => 'UNPAID',
+                    'payment_method' => null,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+                DB::table('ecommerce_order_items')->insert($items);
+
+                return DB::table('ecommerce_orders')->where('id', $orderId)->first();
+            });
+        } catch (\RuntimeException $exception) {
+            $message = match ($exception->getMessage()) {
+                'ORDER_PRODUCT_UNAVAILABLE' => 'Un produit sélectionné n’est plus disponible à la vente.',
+                'ORDER_STOCK_INSUFFICIENT' => 'Le stock disponible est insuffisant pour cette commande.',
+                'ORDER_DIGITAL_FILE_MISSING' => 'Un produit numérique ne dispose pas de fichier téléchargeable.',
+                default => 'Le total de cette commande est invalide.',
+            };
+            return response()->json(['error' => $message], 422);
+        }
+
+        return response()->json($this->order($created, DB::table('ecommerce_order_items')->where('order_id', $orderId)->get()->all()), 201);
     }
 
     public function downloadOrderAttachment(Request $request, string $id, string $attachmentId)
@@ -1800,6 +1918,9 @@ class EcommerceController extends Controller
                 ? ['file', 'mimetypes:application/pdf,image/jpeg,image/png,image/webp', 'max:2048']
                 : ['prohibited'],
         ])->validate();
+        if (str_starts_with((string) ($input['note'] ?? ''), self::MANUAL_ORDER_NOTE_MARKER)) {
+            $input['note'] = 'Message client : '.$input['note'];
+        }
         $input['paymentMethod'] = $input['paymentMethod'] ?? 'WAVE';
         $attachments = $input['attachments'] ?? [];
         unset($input['attachments']);
@@ -2449,12 +2570,13 @@ class EcommerceController extends Controller
         return [
             'id' => $row->id,
             'companyId' => $row->company_id,
+            'createdSource' => str_starts_with((string) ($row->note ?? ''), self::MANUAL_ORDER_NOTE_MARKER) ? 'MANUAL' : 'ONLINE',
             'reference' => $row->reference,
             'customerName' => $row->customer_name,
             'customerEmail' => $row->customer_email,
             'customerPhone' => $row->customer_phone,
             'shippingAddress' => $row->shipping_address,
-            'note' => $row->note,
+            'note' => preg_replace('/^\[MAXIMUS-MANUAL-ORDER\]\n?/', '', (string) ($row->note ?? '')) ?? '',
             'deliveryZoneId' => $row->delivery_zone_id ?? null,
             'deliveryZoneName' => $row->delivery_zone_name ?? null,
             'deliveryZoneFee' => (int) ($row->delivery_zone_fee ?? 0),

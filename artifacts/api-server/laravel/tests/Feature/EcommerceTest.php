@@ -1172,6 +1172,41 @@ class EcommerceTest extends TestCase
         $this->assertDatabaseHas('ecommerce_products', ['slug' => 'produit-transition', 'stock' => 3]);
     }
 
+    public function test_company_can_create_manual_unpaid_order_and_stock_returns_on_cancellation(): void
+    {
+        $request = $this->asActor();
+        $product = $request->postJson('/api/ecommerce/products?companyId=kora', [
+            'name' => 'Produit manuel',
+            'slug' => 'produit-manuel',
+            'sku' => 'MANUAL-01',
+            'price' => 2500,
+            'stock' => 5,
+            'status' => 'PUBLISHED',
+        ])->assertCreated()->json();
+        $this->setEcommerceFeatures(['catalogue', 'commandes']);
+
+        $order = $request->postJson('/api/ecommerce/orders?companyId=kora', [
+            'customerName' => 'Client manuel',
+            'customerPhone' => '+221770000000',
+            'shippingAddress' => 'Dakar',
+            'items' => [['productId' => $product['id'], 'quantity' => 2]],
+        ])->assertCreated()
+            ->assertJsonPath('createdSource', 'MANUAL')
+            ->assertJsonPath('paymentStatus', 'UNPAID')
+            ->assertJsonPath('total', 5000)
+            ->json();
+
+        $this->assertDatabaseHas('ecommerce_products', ['id' => $product['id'], 'stock' => 3]);
+        $this->assertDatabaseHas('ecommerce_orders', [
+            'id' => $order['id'],
+            'customer_id' => null,
+            'payment_status' => 'UNPAID',
+        ]);
+        $request->patchJson('/api/ecommerce/orders/'.$order['id'].'/status?companyId=kora', ['status' => 'ANNULÉE'])
+            ->assertOk();
+        $this->assertDatabaseHas('ecommerce_products', ['id' => $product['id'], 'stock' => 5]);
+    }
+
     public function test_public_order_by_slug_rejects_an_inactive_company(): void
     {
         CompanyRegistry::ensureActive('kora', 'Entreprise KORA');

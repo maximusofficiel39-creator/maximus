@@ -37,6 +37,7 @@ import {
   type EcommerceSalesReportSource,
   type EcommerceSalesReportSourceFilter,
 } from '@/lib/ecommerce-api';
+import { EcommerceExpenseReportPanel } from '@/pages/ecommerce-expense-report-panel';
 
 type SalesReportFilters = {
   dateFrom: string;
@@ -168,11 +169,15 @@ function SaleRows({ sales }: { sales: EcommerceSalesReportSale[] }) {
 export default function EcommerceSalesReportPanel({
   companyId,
   availableSources,
+  canViewSalesReport = true,
+  availableExpenseReports = [],
   storeName,
   preview = false,
 }: {
   companyId: string;
   availableSources: EcommerceSalesReportSource[];
+  canViewSalesReport?: boolean;
+  availableExpenseReports?: Array<'PERSONAL' | 'INVESTMENT'>;
   storeName?: string;
   preview?: boolean;
 }) {
@@ -195,11 +200,17 @@ export default function EcommerceSalesReportPanel({
   const [printSales, setPrintSales] = useState<EcommerceSalesReportSale[] | null>(null);
   const [printSummary, setPrintSummary] = useState<EcommerceSalesReportResponse['summary'] | null>(null);
   const [printFilters, setPrintFilters] = useState<SalesReportFilters | null>(null);
+  const [activeReport, setActiveReport] = useState<'SALES' | 'PERSONAL' | 'INVESTMENT'>(canViewSalesReport ? 'SALES' : availableExpenseReports[0] ?? 'SALES');
   const requestId = useRef(0);
   const allowedSources = report?.availableSources ?? availableSources;
 
   useEffect(() => {
     const currentRequest = ++requestId.current;
+    if (!canViewSalesReport) {
+      setLoading(false);
+      setReport(null);
+      return;
+    }
     if (preview) {
       setReport({
         sales: [],
@@ -239,7 +250,7 @@ export default function EcommerceSalesReportPanel({
     return () => {
       if (currentRequest === requestId.current) requestId.current += 1;
     };
-  }, [api, availableSources, filters, page, preview]);
+  }, [api, availableSources, canViewSalesReport, filters, page, preview]);
 
   useEffect(() => {
     if (source !== 'ALL' && report && !report.availableSources.includes(source)) {
@@ -336,13 +347,13 @@ export default function EcommerceSalesReportPanel({
     <div className="space-y-4" data-testid="panel-ecommerce-sales-report">
       <section className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">E-commerce · suivi des ventes</p>
-          <h2 className="mt-1 text-xl font-semibold tracking-tight">Rapport des ventes</h2>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">E-commerce · activité financière</p>
+          <h2 className="mt-1 text-xl font-semibold tracking-tight">Rapports</h2>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Ventes en ligne et au comptoir, avec statut de paiement et devise enregistrée, sans conversion.
+            Consultez séparément les ventes, les dépenses et les investissements.
           </p>
         </div>
-        <Button
+        {activeReport === 'SALES' && canViewSalesReport && <Button
           data-testid="button-sales-report-print"
           disabled={preview || printing || loading}
           onClick={() => void printAllResults()}
@@ -351,9 +362,18 @@ export default function EcommerceSalesReportPanel({
         >
           <Printer aria-hidden="true" />
           {printing ? 'Préparation du rapport…' : 'Imprimer / PDF'}
-        </Button>
+        </Button>}
       </section>
 
+      <nav aria-label="Types de rapport" className="flex flex-wrap gap-2">
+        {canViewSalesReport && <Button type="button" variant={activeReport === 'SALES' ? 'default' : 'outline'} onClick={() => setActiveReport('SALES')}>Ventes</Button>}
+        {availableExpenseReports.includes('PERSONAL') && <Button type="button" variant={activeReport === 'PERSONAL' ? 'default' : 'outline'} onClick={() => setActiveReport('PERSONAL')}>Dépenses</Button>}
+        {availableExpenseReports.includes('INVESTMENT') && <Button type="button" variant={activeReport === 'INVESTMENT' ? 'default' : 'outline'} onClick={() => setActiveReport('INVESTMENT')}>Investissements</Button>}
+      </nav>
+
+      {activeReport === 'PERSONAL' && availableExpenseReports.includes('PERSONAL') && <EcommerceExpenseReportPanel companyId={companyId} type="PERSONAL" preview={preview} />}
+      {activeReport === 'INVESTMENT' && availableExpenseReports.includes('INVESTMENT') && <EcommerceExpenseReportPanel companyId={companyId} type="INVESTMENT" preview={preview} />}
+      {activeReport === 'SALES' && canViewSalesReport && <>
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Période et source</CardTitle>
@@ -576,6 +596,7 @@ export default function EcommerceSalesReportPanel({
           </Card>
         </>
       )}
+      </>}
 
       {printSales && printSummary && printFilters && typeof document !== 'undefined' && createPortal(
         <section className="ecommerce-sales-report-print-root" aria-label="Version imprimable du rapport">

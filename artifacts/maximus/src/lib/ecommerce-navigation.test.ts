@@ -4,6 +4,8 @@ import { isEcommerceTabVisible } from './ecommerce-navigation';
 
 test('shows the sales report only when its own feature is authorized', () => {
   assert.equal(isEcommerceTabVisible('rapport-ventes', ['dashboard']), false);
+  assert.equal(isEcommerceTabVisible('rapport-ventes', ['depenses']), true);
+  assert.equal(isEcommerceTabVisible('rapport-ventes', ['investissements']), true);
   assert.equal(isEcommerceTabVisible('rapport-ventes', ['rapport-ventes']), true);
   assert.equal(isEcommerceTabVisible(
     'rapport-ventes',

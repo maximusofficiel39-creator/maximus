@@ -381,6 +381,7 @@ export interface EcommerceDeliveryZone {
 export interface EcommerceOrder {
   id: string;
   companyId: string;
+  createdSource?: 'ONLINE' | 'MANUAL';
   reference: string;
   customerName: string;
   customerEmail: string | null;
@@ -779,6 +780,8 @@ export const createEcommerceApi = (companyId: string) => {
      getLocationReservations: () => request<EcommerceCarReservation[]>(withCompany('/ecommerce/location/reservations')),
      updateLocationReservationStatus: (id: string, status: EcommerceCarReservationStatus) => request<EcommerceCarReservation>(withCompany(`/ecommerce/location/reservations/${encodeURIComponent(id)}/status`), { method: 'PATCH', body: JSON.stringify({ status }) }),
     updateOrderStatus: (id: string, status: EcommerceOrderStatus) => request<EcommerceOrder>(withCompany(`/ecommerce/orders/${id}/status`), { method: 'PATCH', body: JSON.stringify({ status }) }),
+    createCompanyOrder: (body: { customerName: string; customerEmail?: string; customerPhone?: string; shippingAddress?: string; note?: string; items: Array<{ productId: string; quantity: number }> }) =>
+      request<EcommerceOrder>(withCompany('/ecommerce/orders'), json(body)),
     deliveryRequests: () => request<{ deliveryRequests: EcommerceDeliveryRequest[] }>(withCompany('/ecommerce/delivery-requests')),
     updateDeliveryRequestStatus: (id: string, status: EcommerceDeliveryRequestStatus) => request<EcommerceDeliveryRequest>(withCompany(`/ecommerce/delivery-requests/${encodeURIComponent(id)}/status`), { method: 'PATCH', body: JSON.stringify({ status }) }),
   };

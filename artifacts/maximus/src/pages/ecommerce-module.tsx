@@ -64,6 +64,7 @@ import EcommercePosPanel from '@/pages/ecommerce-pos-panel';
 import EcommerceExpensesPanel from '@/pages/ecommerce-expenses-panel';
 import { EcommerceExpenseCategoriesPanel } from '@/pages/ecommerce-expense-categories-panel';
 import EcommerceSalesReportPanel from '@/pages/ecommerce-sales-report-panel';
+import { EcommerceExpenseReportPanel } from '@/pages/ecommerce-expense-report-panel';
 import { useQueryTab } from '@/lib/query-tab';
 import { isEcommerceTabVisible } from '@/lib/ecommerce-navigation';
 import { useAppDialog } from '@/components/confirm-dialog';
@@ -83,7 +84,7 @@ const tabs: { id: EcommerceTab; label: string; icon: typeof LayoutDashboard }[] 
   { id: 'vente-comptoir', label: 'Vente comptoir', icon: ShoppingBag },
   { id: 'depenses', label: 'Dépenses', icon: Banknote },
   { id: 'investissements', label: 'Investissements', icon: CircleDollarSign },
-  { id: 'rapport-ventes', label: 'Rapport des ventes', icon: BarChart3 },
+  { id: 'rapport-ventes', label: 'Rapport', icon: BarChart3 },
   { id: 'categories', label: 'Catégories', icon: Tags },
   { id: 'commandes', label: 'Commandes', icon: ClipboardList },
   { id: 'clients', label: 'Clients', icon: Users },
@@ -524,6 +525,11 @@ export default function EcommerceModulePage({
         <EcommerceSalesReportPanel
           companyId={companyId}
           availableSources={reportSources}
+          canViewSalesReport={hasFeatureAccess('rapport-ventes', 'voir')}
+          availableExpenseReports={[
+            ...(hasFeatureAccess('depenses', 'voir') ? ['PERSONAL' as const] : []),
+            ...(hasFeatureAccess('investissements', 'voir') ? ['INVESTMENT' as const] : []),
+          ]}
           storeName={store.name}
           preview={preview}
         />
@@ -541,7 +547,7 @@ export default function EcommerceModulePage({
         canModifyInvestments={Boolean(canModify && hasFeatureAccess('investissements', 'modifier'))}
         run={run}
       />}
-      {tab === 'commandes' && <><Orders data={data} canModify={currentCanModify} run={run} /><OrderAttachments data={data} /></>}
+      {tab === 'commandes' && <><Orders data={data} canCreate={currentCanCreate && hasFeatureAccess('commandes', 'créer')} canModify={currentCanModify} run={run} onCreate={async input => { await api.createCompanyOrder(input); await load(true); }} /><OrderAttachments data={data} /></>}
       {tab === 'clients' && <Clients data={data} />}
       {tab === 'promotions' && <Promotions />}
        {tab === 'location' && <RentalPanel data={data} canCreate={currentCanCreate} canModify={currentCanModify} run={run} />}
@@ -1212,7 +1218,71 @@ function CategoryManager({
   </div>;
 }
 
-function Orders({ data, canModify, run }: { data: EcommerceBootstrap; canModify: boolean; run: (action: () => Promise<unknown>, success: string) => Promise<unknown | undefined> }) {
+type ManualOrderInput = { customerName: string; customerEmail?: string; customerPhone?: string; shippingAddress?: string; note?: string; items: Array<{ productId: string; quantity: number }> };
+
+function ManualOrderDialog({ products, currency, onClose, onSubmit }: { products: EcommerceProduct[]; currency: EcommerceStore['currency']; onClose: () => void; onSubmit: (input: ManualOrderInput) => Promise<unknown> }) {
+  const [customerName, setCustomerName] = useState('');
+  const [customerEmail, setCustomerEmail] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [shippingAddress, setShippingAddress] = useState('');
+  const [note, setNote] = useState('');
+  const [lines, setLines] = useState<Array<{ productId: string; quantity: number }>>([{ productId: '', quantity: 1 }]);
+  const [pending, setPending] = useState(false);
+  const availableProducts = products.filter(product => product.status === 'PUBLISHED' && product.productType === 'SALE');
+  const total = lines.reduce((sum, line) => {
+    const product = availableProducts.find(candidate => candidate.id === line.productId);
+    return sum + (product?.price ?? 0) * line.quantity;
+  }, 0);
+  const updateLine = (index: number, patch: Partial<(typeof lines)[number]>) =>
+    setLines(current => current.map((line, lineIndex) => lineIndex === index ? { ...line, ...patch } : line));
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (pending || !customerName.trim() || lines.some(line => !line.productId || line.quantity < 1)) return;
+    setPending(true);
+    try {
+      await onSubmit({
+        customerName: customerName.trim(),
+        ...(customerEmail.trim() ? { customerEmail: customerEmail.trim() } : {}),
+        ...(customerPhone.trim() ? { customerPhone: customerPhone.trim() } : {}),
+        ...(shippingAddress.trim() ? { shippingAddress: shippingAddress.trim() } : {}),
+        ...(note.trim() ? { note: note.trim() } : {}),
+        items: lines,
+      });
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return <Modal title="Créer une commande manuelle" onClose={onClose} large>
+    <form onSubmit={event => void submit(event)} className="space-y-4">
+      <p className="rounded-lg border bg-[hsl(var(--muted)/.35)] p-3 text-xs text-[hsl(var(--muted-foreground))]">La commande sera créée sans passage par la boutique en ligne. Elle restera non payée jusqu’à confirmation de l’encaissement.</p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Nom du client" required value={customerName} onChange={setCustomerName} />
+        <Field label="Téléphone" value={customerPhone} onChange={setCustomerPhone} />
+        <Field label="E-mail (facultatif)" value={customerEmail} onChange={setCustomerEmail} />
+        <Field label="Adresse de livraison" value={shippingAddress} onChange={setShippingAddress} />
+      </div>
+      <section className="space-y-3 rounded-xl border p-3">
+        <div className="flex items-center justify-between gap-2"><h3 className="text-sm font-bold">Articles</h3><Button type="button" variant="outline" onClick={() => setLines(current => [...current, { productId: '', quantity: 1 }])}><Plus size={14} className="mr-1" />Ajouter un article</Button></div>
+        {availableProducts.length === 0 ? <p className="text-sm text-[hsl(var(--muted-foreground))]">Aucun produit publié disponible pour cette commande.</p> : lines.map((line, index) => {
+          const selected = availableProducts.find(product => product.id === line.productId);
+          return <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_8rem_auto] items-end" key={index}>
+            <label className="block text-xs font-bold">Produit<select data-testid={`select-manual-order-product-${index}`} required value={line.productId} onChange={event => updateLine(index, { productId: event.target.value })} className="mt-1.5 w-full rounded-lg border bg-[hsl(var(--card))] px-3 py-2.5 text-sm"><option value="">Choisir un produit</option>{availableProducts.map(product => <option key={product.id} value={product.id}>{product.name} · {money(product.price, currency)}{product.fulfillmentType === 'PHYSICAL' ? ` · stock ${product.stock}` : ''}</option>)}</select></label>
+            <Field label="Quantité" type="number" required value={String(line.quantity)} onChange={value => updateLine(index, { quantity: Math.max(1, Math.floor(Number(value) || 1)) })} />
+            {lines.length > 1 && <Button type="button" variant="outline" aria-label={`Retirer la ligne ${index + 1}`} onClick={() => setLines(current => current.filter((_, lineIndex) => lineIndex !== index))}><X size={15} /></Button>}
+            {selected && <span className="text-xs text-[hsl(var(--muted-foreground))] sm:col-span-3">Sous-total : {money(selected.price * line.quantity, currency)}</span>}
+          </div>;
+        })}
+        <p className="text-right text-sm font-bold">Total estimé : {money(total, currency)}</p>
+      </section>
+      <label className="block text-xs font-bold">Note<textarea data-testid="input-manual-order-note" value={note} onChange={event => setNote(event.target.value)} rows={2} maxLength={500} className="mt-1.5 w-full rounded-lg border bg-[hsl(var(--card))] px-3 py-2.5 text-sm" /></label>
+      <div className="modal-footer flex justify-end gap-2"><Button type="button" variant="outline" onClick={onClose}>Annuler</Button><Button type="submit" disabled={pending || availableProducts.length === 0 || !customerName.trim() || lines.some(line => !line.productId)}>{pending ? 'Création…' : 'Créer la commande'}</Button></div>
+    </form>
+  </Modal>;
+}
+
+function Orders({ data, canCreate, canModify, run, onCreate }: { data: EcommerceBootstrap; canCreate: boolean; canModify: boolean; run: (action: () => Promise<unknown>, success: string) => Promise<unknown | undefined>; onCreate: (input: ManualOrderInput) => Promise<unknown> }) {
+  const [creating, setCreating] = useState(false);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<'ALL' | EcommerceOrderStatus>('ALL');
   const paymentMethodLabel = (method: EcommerceOrder['paymentMethod']) => {
@@ -1224,7 +1294,7 @@ function Orders({ data, canModify, run }: { data: EcommerceBootstrap; canModify:
   const allOrders = Array.isArray(data.orders) ? data.orders : [];
   const orders = allOrders.filter(order => (filter === 'ALL' || order.status === filter) && `${order.reference ?? ''} ${order.customerName ?? ''} ${order.customerEmail ?? ''}`.toLocaleLowerCase('fr-FR').includes(query.toLocaleLowerCase('fr-FR')));
   const changeStatus = (order: EcommerceOrder, status: EcommerceOrderStatus) => run(() => createEcommerceApi(data.store.companyId).updateOrderStatus(order.id, status), 'Statut de commande mis à jour.');
-  return <div className="space-y-5 fade-up"><Panel title="Commandes" description="Suivez chaque vente, du premier clic à la livraison."><ResponsiveFilterGroup testId="ecommerce-orders-filters" activeCount={countActiveFilters([[filter, 'ALL']])} onClear={() => setFilter('ALL')} search={<label className="relative min-w-0 flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[hsl(var(--muted-foreground))]" size={15} /><input aria-label="Rechercher une commande" value={query} onChange={event => setQuery(event.target.value)} placeholder="Rechercher par référence, nom ou e-mail" className="w-full rounded-lg border bg-transparent py-2.5 pl-9 pr-3 text-sm" /></label>}><select aria-label="Filtrer par statut" value={filter} onChange={event => setFilter(event.target.value as typeof filter)} className="rounded-lg border bg-[hsl(var(--card))] px-3 py-2.5 text-sm"><option value="ALL">Tous les statuts</option>{orderStatuses.map(item => <option key={item} value={item}>{item}</option>)}</select></ResponsiveFilterGroup>{orders.length === 0 ? <Empty icon={ClipboardList} title={allOrders.length ? 'Aucune commande trouvée' : 'Aucune commande pour le moment'} text={allOrders.length ? 'Modifiez votre recherche ou le filtre de statut.' : 'Les ventes de votre boutique apparaîtront ici dès la première vente.'} /> : <div className="table-scroll"><table className="w-full text-left text-sm"><thead><tr><th className="px-4">Commande</th><th className="px-4">Client</th><th className="px-4">Articles</th><th className="px-4">Total</th><th className="px-4">Statut et paiement</th><th className="px-4">Mise à jour</th></tr></thead><tbody className="divide-y">{orders.map(order => { const items = Array.isArray(order.items) ? order.items : []; return <tr key={order.id}><td className="px-4 py-4"><strong className="block">{order.reference}</strong><small className="mt-1 block text-xs text-[hsl(var(--muted-foreground))]">{dateLabel(order.createdAt)}</small></td><td className="px-4 py-4"><strong className="block">{order.customerName}</strong><small className="mt-1 block text-xs text-[hsl(var(--muted-foreground))]">{order.customerEmail}</small></td><td className="px-4 py-4 text-xs">{items.reduce((sum, item) => sum + item.quantity, 0)} article{items.length > 1 ? 's' : ''}</td><td className="px-4 py-4 font-bold">{money(order.total, data.store.currency)}</td><td className="px-4 py-4"><StatusPill value={order.status} />{order.paymentMethod && <small className="mt-1 block text-xs text-[hsl(var(--muted-foreground))]">{paymentMethodLabel(order.paymentMethod)}</small>}</td><td className="px-4 py-4">{canModify ? <select aria-label={`Changer le statut de ${order.reference}`} value={order.status} onChange={event => void changeStatus(order, event.target.value as EcommerceOrderStatus)} className="rounded-lg border bg-[hsl(var(--card))] px-2 py-2 text-xs font-bold">{allowedNextStatuses(order.status).map(item => <option key={item} value={item}>{item}</option>)}</select> : <span className="text-xs text-[hsl(var(--muted-foreground))]">Lecture seule</span>}</td></tr>; })}</tbody></table></div>}</Panel></div>;
+  return <div className="space-y-5 fade-up"><Panel title="Commandes" description="Suivez les commandes de la boutique et créez-en directement depuis l’entreprise." action={canCreate ? <Button type="button" onClick={() => setCreating(true)}><Plus size={15} className="mr-1" />Créer une commande</Button> : undefined}><ResponsiveFilterGroup testId="ecommerce-orders-filters" activeCount={countActiveFilters([[filter, 'ALL']])} onClear={() => setFilter('ALL')} search={<label className="relative min-w-0 flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[hsl(var(--muted-foreground))]" size={15} /><input aria-label="Rechercher une commande" value={query} onChange={event => setQuery(event.target.value)} placeholder="Rechercher par référence, nom ou e-mail" className="w-full rounded-lg border bg-transparent py-2.5 pl-9 pr-3 text-sm" /></label>}><select aria-label="Filtrer par statut" value={filter} onChange={event => setFilter(event.target.value as typeof filter)} className="rounded-lg border bg-[hsl(var(--card))] px-3 py-2.5 text-sm"><option value="ALL">Tous les statuts</option>{orderStatuses.map(item => <option key={item} value={item}>{item}</option>)}</select></ResponsiveFilterGroup>{orders.length === 0 ? <Empty icon={ClipboardList} title={allOrders.length ? 'Aucune commande trouvée' : 'Aucune commande pour le moment'} text={allOrders.length ? 'Modifiez votre recherche ou le filtre de statut.' : 'Les ventes de votre boutique apparaîtront ici dès la première vente.'} /> : <div className="table-scroll"><table className="w-full text-left text-sm"><thead><tr><th className="px-4">Commande</th><th className="px-4">Client</th><th className="px-4">Articles</th><th className="px-4">Total</th><th className="px-4">Statut et paiement</th><th className="px-4">Mise à jour</th></tr></thead><tbody className="divide-y">{orders.map(order => { const items = Array.isArray(order.items) ? order.items : []; return <tr key={order.id}><td className="px-4 py-4"><strong className="block">{order.reference}</strong><small className="mt-1 block text-xs text-[hsl(var(--muted-foreground))]">{dateLabel(order.createdAt)}</small></td><td className="px-4 py-4"><strong className="block">{order.customerName}</strong><small className="mt-1 block text-xs text-[hsl(var(--muted-foreground))]">{order.customerEmail || order.customerPhone || 'Coordonnées non renseignées'}</small></td><td className="px-4 py-4 text-xs">{items.reduce((sum, item) => sum + item.quantity, 0)} article{items.length > 1 ? 's' : ''}</td><td className="px-4 py-4 font-bold">{money(order.total, data.store.currency)}</td><td className="px-4 py-4"><StatusPill value={order.status} /><small className="mt-1 block text-xs text-[hsl(var(--muted-foreground))]">{order.paymentStatus === 'UNPAID' ? 'Non payée' : paymentMethodLabel(order.paymentMethod ?? null)}</small></td><td className="px-4 py-4">{canModify ? <select aria-label={`Changer le statut de ${order.reference}`} value={order.status} onChange={event => void changeStatus(order, event.target.value as EcommerceOrderStatus)} className="rounded-lg border bg-[hsl(var(--card))] px-2 py-2 text-xs font-bold">{allowedNextStatuses(order.status).map(item => <option key={item} value={item}>{item}</option>)}</select> : <span className="text-xs text-[hsl(var(--muted-foreground))]">Lecture seule</span>}</td></tr>; })}</tbody></table></div>}</Panel>{creating && <ManualOrderDialog products={data.products} currency={data.store.currency} onClose={() => setCreating(false)} onSubmit={input => run(() => onCreate(input), 'Commande créée et enregistrée comme non payée.').then(result => { if (result !== undefined) setCreating(false); })} />}</div>;
 }
 
 function OrderAttachments({ data }: { data: EcommerceBootstrap }) {
