@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
-import { BarChart3, Download, RefreshCw } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { BarChart3, Download, Printer, RefreshCw } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import { Button } from '@workspace/maximus-design-system/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@workspace/maximus-design-system/components/ui/card';
 import { Input } from '@workspace/maximus-design-system/components/ui/input';
@@ -59,7 +60,10 @@ export function EcommerceExpenseReportPanel({
   const [dateTo, setDateTo] = useState(() => localDate(new Date()));
   const [report, setReport] = useState<EcommerceExpenseReport | null>(null);
   const [pending, setPending] = useState(false);
+  const [printing, setPrinting] = useState(false);
+  const [printReport, setPrintReport] = useState<EcommerceExpenseReport | null>(null);
   const [error, setError] = useState('');
+  const originalDocumentTitle = useRef<string | null>(null);
   const title = type === 'INVESTMENT' ? 'Rapport des investissements' : 'Rapport des dépenses';
 
   const load = async () => {
@@ -80,6 +84,24 @@ export function EcommerceExpenseReportPanel({
     if (!preview) void load();
   }, [companyId, type, preview]);
 
+  useEffect(() => {
+    if (!printReport) return;
+    originalDocumentTitle.current = document.title;
+    document.title = `${type === 'INVESTMENT' ? 'investissements' : 'depenses'}-${printReport.filters.dateFrom}-${printReport.filters.dateTo}`;
+    const finishPrinting = () => {
+      setPrintReport(null);
+      setPrinting(false);
+      if (originalDocumentTitle.current) document.title = originalDocumentTitle.current;
+      originalDocumentTitle.current = null;
+    };
+    window.addEventListener('afterprint', finishPrinting);
+    const timeout = window.setTimeout(() => window.print(), 120);
+    return () => {
+      window.clearTimeout(timeout);
+      window.removeEventListener('afterprint', finishPrinting);
+    };
+  }, [printReport, type]);
+
   const currencyGroups = report?.summaryByCurrency ?? [];
   const monthly = report?.months ?? [];
   const categories = report?.categories ?? [];
@@ -91,9 +113,14 @@ export function EcommerceExpenseReportPanel({
           <CardTitle className="flex items-center gap-2 text-base"><BarChart3 className="size-4 text-primary" aria-hidden="true" />{title}</CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">Totaux complets, regroupés par devise, catégorie et mois.</p>
         </div>
-        {report && <Button type="button" variant="outline" onClick={() => downloadReport(report, title)}>
-          <Download className="mr-2 size-4" aria-hidden="true" />Exporter CSV
-        </Button>}
+        {report && <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" onClick={() => downloadReport(report, title)}>
+            <Download className="mr-2 size-4" aria-hidden="true" />Exporter CSV
+          </Button>
+          <Button type="button" variant="outline" disabled={printing} onClick={() => { setPrinting(true); setPrintReport(report); }}>
+            <Printer className="mr-2 size-4" aria-hidden="true" />{printing ? 'Préparation…' : 'Imprimer / enregistrer en PDF'}
+          </Button>
+        </div>}
       </CardHeader>
       <CardContent className="space-y-5">
         <form className="flex flex-col gap-3 sm:flex-row sm:items-end" onSubmit={event => { event.preventDefault(); void load(); }}>
@@ -143,6 +170,42 @@ export function EcommerceExpenseReportPanel({
                 </section>;
               })}
       </CardContent>
+      {printReport && typeof document !== 'undefined' && createPortal(
+        <section className="ecommerce-sales-report-print-root" aria-label="Rapport prêt à enregistrer en PDF">
+          <div className="ecommerce-sales-report-print">
+            <header className="print-report-header">
+              <p className="print-report-kicker">MAXIMUS ERP · E-commerce</p>
+              <h1>{title}</h1>
+              <p>Période : {printReport.filters.dateFrom} — {printReport.filters.dateTo}</p>
+              <p>Édité le {new Date().toLocaleString('fr-FR')}</p>
+            </header>
+            {printReport.summaryByCurrency.length === 0
+              ? <p>Aucune opération sur cette période.</p>
+              : printReport.summaryByCurrency.map(group => {
+              const currencyCategories = printReport.categories.filter(item => item.currency === group.currency);
+              const currencyMonths = printReport.months.filter(item => item.currency === group.currency);
+              return <section className="print-report-currency" key={group.currency}>
+                <h2>{group.currency}</h2>
+                <div className="print-report-summary">
+                  <p><strong>Total :</strong> {money(group.total, group.currency)}</p>
+                  <p><strong>Nombre d’opérations :</strong> {group.transactionCount}</p>
+                </div>
+                <h3>Répartition par catégorie</h3>
+                <table className="print-report-table">
+                  <thead><tr><th>Catégorie</th><th>Opérations</th><th>Total</th></tr></thead>
+                  <tbody>{currencyCategories.map(item => <tr key={`${item.categoryName}-${item.currency}`}><td>{item.categoryName}</td><td>{item.transactionCount}</td><td>{money(item.total, item.currency)}</td></tr>)}</tbody>
+                </table>
+                <h3>Évolution mensuelle</h3>
+                <table className="print-report-table">
+                  <thead><tr><th>Mois</th><th>Opérations</th><th>Total</th></tr></thead>
+                  <tbody>{currencyMonths.map(item => <tr key={`${item.month}-${item.currency}`}><td>{new Date(`${item.month}-01T12:00:00`).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}</td><td>{item.transactionCount}</td><td>{money(item.total, item.currency)}</td></tr>)}</tbody>
+                </table>
+              </section>;
+            })}
+          </div>
+        </section>,
+        document.body,
+      )}
     </Card>
   );
 }
